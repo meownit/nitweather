@@ -1,119 +1,75 @@
 package com.example.weather2
 
+import android.Manifest
+import android.app.Application
+import android.content.Context
+import android.content.pm.PackageManager
+import android.location.Geocoder
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-<<<<<<< HEAD
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-=======
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
->>>>>>> 5b2d031 (detailed information in weather)
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
-<<<<<<< HEAD
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-=======
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
->>>>>>> 5b2d031 (detailed information in weather)
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-<<<<<<< HEAD
-=======
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
->>>>>>> 5b2d031 (detailed information in weather)
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.ViewModel
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.weather2.ui.theme.Weather2Theme
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import com.google.android.gms.tasks.CancellationTokenSource
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
 import io.ktor.serialization.kotlinx.json.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-<<<<<<< HEAD
-
-// --- DATA CLASSES FOR API RESPONSES ---
-
-// Represents the response from the Geocoding API
-@Serializable
-data class GeocodingResponse(
-    val results: List<CityResult>? = null
-)
-
-// Represents a single city result from the Geocoding API
-@Serializable
-data class CityResult(
-    val name: String,
-    val latitude: Double,
-    val longitude: Double
-)
-
-// Represents the response from the Weather Forecast API
-@Serializable
-data class WeatherResponse(
-    val latitude: Double,
-    val longitude: Double,
-    @SerialName("current")
-    val current: CurrentWeather
-)
-
-// Represents the current weather data block
-@Serializable
-data class CurrentWeather(
-    @SerialName("temperature_2m")
-    val temperature: Double
-)
-
-// A combined data class to hold both city info and its weather for the UI
-data class LocationWeather(
-    val city: CityResult,
-    val weather: WeatherResponse
-)
-=======
 import java.io.FileNotFoundException
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.absoluteValue
 
-// --- DATA CLASSES ---
+// --- DATA CLASSES (Unchanged) ---
 @Serializable data class GeocodingResponse(val results: List<CityResult>? = null)
 @Serializable data class CityResult(val name: String, val latitude: Double, val longitude: Double)
-
-// Updated to include daily forecast data
 @Serializable data class WeatherResponse(
     val latitude: Double,
     val longitude: Double,
@@ -122,66 +78,55 @@ import kotlin.math.absoluteValue
     @SerialName("daily")
     val daily: DailyForecast
 )
-
-// Updated to include more current weather details
 @Serializable data class CurrentWeather(
     @SerialName("temperature_2m") val temperature: Double,
     @SerialName("relative_humidity_2m") val humidity: Int,
     @SerialName("apparent_temperature") val apparentTemperature: Double,
     @SerialName("wind_speed_10m") val windSpeed: Double
 )
-
-// New data class for the daily forecast
 @Serializable data class DailyForecast(
     val time: List<String>,
     @SerialName("temperature_2m_max") val temperatureMax: List<Double>,
     @SerialName("temperature_2m_min") val temperatureMin: List<Double>
 )
-
 @Serializable
 data class LocationWeather(val city: CityResult, val weather: WeatherResponse, val isCurrentLocation: Boolean = false)
->>>>>>> 5b2d031 (detailed information in weather)
 
-// --- VIEWMODEL ---
-class WeatherViewModel : ViewModel() {
-
-    // Holds the list of locations the user has added.
+// --- VIEWMODEL (Unchanged) ---
+class WeatherViewModel(application: Application) : AndroidViewModel(application) {
     private val _locationsState = MutableStateFlow<List<LocationWeather>>(emptyList())
     val locationsState = _locationsState.asStateFlow()
 
-    // Holds the transient UI state, like loading indicators or error messages.
     private val _uiState = MutableStateFlow<UiState>(UiState.Idle)
     val uiState = _uiState.asStateFlow()
 
-    // Ktor HTTP client
     private val client = HttpClient(CIO) {
-        install(ContentNegotiation) {
-            json(Json {
-                ignoreUnknownKeys = true
-                isLenient = true // Helps parse slightly malformed JSON
-            })
-        }
+        install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true; isLenient = true }) }
     }
 
-    // Searches for a city and fetches its weather.
+    private val json = Json { prettyPrint = true }
+    private val fileName = "locations.json"
+
+    init {
+        loadLocations()
+    }
+
     fun addCity(cityName: String) {
         viewModelScope.launch {
+            val existingIndex = _locationsState.value.indexOfFirst { it.city.name.equals(cityName, ignoreCase = true) }
+            if (existingIndex != -1) {
+                _uiState.value = UiState.NavigateToPage(existingIndex)
+                return@launch
+            }
+
             _uiState.value = UiState.Loading
             try {
-                // 1. Geocoding request to find the city's coordinates
                 val geoUrl = "https://geocoding-api.open-meteo.com/v1/search?name=${cityName.trim()}&count=1"
                 val geoResponse: GeocodingResponse = client.get(geoUrl).body()
                 val city = geoResponse.results?.firstOrNull()
 
                 if (city != null) {
-                    // 2. Weather forecast request using the found coordinates
-                    val weatherUrl = "https://api.open-meteo.com/v1/forecast?latitude=${city.latitude}&longitude=${city.longitude}&current=temperature_2m"
-                    val weatherResponse: WeatherResponse = client.get(weatherUrl).body()
-
-                    // 3. Create the combined data object and add it to our list
-                    val newLocationWeather = LocationWeather(city, weatherResponse)
-                    _locationsState.value += newLocationWeather // Appends the new location to the list
-                    _uiState.value = UiState.Success("Added ${city.name}")
+                    fetchWeatherForCoordinates(city, isCurrentLocation = false, addNew = true)
                 } else {
                     _uiState.value = UiState.Error("City not found: $cityName")
                 }
@@ -191,21 +136,35 @@ class WeatherViewModel : ViewModel() {
         }
     }
 
-    // Resets the UI state, e.g., after an error message has been shown.
-    fun messageShown() {
-        _uiState.value = UiState.Idle
+    fun addCurrentLocation(lat: Double, lon: Double) {
+        viewModelScope.launch {
+            val existingIndex = _locationsState.value.indexOfFirst { isNearby(it.city.latitude, it.city.longitude, lat, lon) }
+            if (existingIndex != -1) {
+                _uiState.value = UiState.NavigateToPage(existingIndex)
+                return@launch
+            }
+
+            _uiState.value = UiState.Loading
+            val cityName = getCityNameFromCoordinates(lat, lon)
+            val city = CityResult(cityName, lat, lon)
+            fetchWeatherForCoordinates(city, isCurrentLocation = true, addNew = true)
+        }
     }
 
-<<<<<<< HEAD
-    override fun onCleared() {
-        super.onCleared()
-        client.close()
+    fun removeLocation(index: Int) {
+        viewModelScope.launch {
+            val currentList = _locationsState.value.toMutableList()
+            if (index in currentList.indices) {
+                currentList.removeAt(index)
+                _locationsState.value = currentList
+                saveLocations()
+            }
+        }
     }
-=======
+
     private fun fetchWeatherForCoordinates(city: CityResult, isCurrentLocation: Boolean, addNew: Boolean) {
         viewModelScope.launch {
             try {
-                // Updated URL to fetch more current data and the daily forecast
                 val weatherUrl = "https://api.open-meteo.com/v1/forecast?latitude=${city.latitude}&longitude=${city.longitude}&current=temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min&timezone=auto"
                 val weatherResponse: WeatherResponse = client.get(weatherUrl).body()
                 val newLocationWeather = LocationWeather(city, weatherResponse, isCurrentLocation)
@@ -287,109 +246,84 @@ class WeatherViewModel : ViewModel() {
 
     fun messageShown() { _uiState.value = UiState.Idle }
     override fun onCleared() { super.onCleared(); client.close() }
->>>>>>> 5b2d031 (detailed information in weather)
 }
 
-// --- UI STATE ---
+// --- UI STATE (Unchanged) ---
 sealed interface UiState {
     data object Idle : UiState
     data object Loading : UiState
     data class Success(val message: String) : UiState
     data class Error(val message: String) : UiState
+    data class NavigateToPage(val page: Int) : UiState
 }
 
-// --- MAIN ACTIVITY ---
+// --- MAIN ACTIVITY (Unchanged) ---
 class MainActivity : ComponentActivity() {
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions: Map<String, Boolean> ->
+        when {
+            permissions.getOrDefault(Manifest.permission.ACCESS_FINE_LOCATION, false) -> {}
+            permissions.getOrDefault(Manifest.permission.ACCESS_COARSE_LOCATION, false) -> {}
+            else -> {}
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        requestPermissionLauncher.launch(arrayOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ))
         enableEdgeToEdge()
-        setContent {
-            Weather2Theme {
-                WeatherApp()
-            }
-        }
+        setContent { Weather2Theme { WeatherApp() } }
     }
 }
 
 // --- COMPOSABLES ---
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun WeatherApp(viewModel: WeatherViewModel = androidx.lifecycle.viewmodel.compose.viewModel()) {
-    // State for managing the "Add City" dialog visibility
     var showAddCityDialog by remember { mutableStateOf(false) }
-
-    // Collect states from the ViewModel
     val locations by viewModel.locationsState.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
-
-    // Pager state to control the slidable pages
     val pagerState = rememberPagerState(pageCount = { locations.size })
-    val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
-    // This effect listens for changes in the UI state to show messages (Toasts)
     LaunchedEffect(uiState) {
         when (val state = uiState) {
             is UiState.Error -> {
                 Toast.makeText(context, state.message, Toast.LENGTH_SHORT).show()
                 viewModel.messageShown()
             }
-            is UiState.Success -> {
-                // You could optionally show a success toast here
+            is UiState.NavigateToPage -> {
+                scope.launch { pagerState.animateScrollToPage(state.page) }
                 viewModel.messageShown()
             }
             else -> {}
         }
     }
 
-    // This effect scrolls to the new page when a city is added
     LaunchedEffect(locations.size) {
-        if (locations.isNotEmpty()) {
+        if (locations.isNotEmpty() && uiState !is UiState.NavigateToPage) {
             pagerState.animateScrollToPage(locations.size - 1)
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Weather") },
-                actions = {
-                    IconButton(onClick = { showAddCityDialog = true }) {
-                        Icon(Icons.Default.Add, contentDescription = "Add City")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.primary,
-                )
-            )
-        }
-    ) { innerPadding ->
-        Column(modifier = Modifier.padding(innerPadding)) {
-            if (uiState is UiState.Loading) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            }
-
-            if (locations.isEmpty()) {
-                // Show a placeholder message when no cities are added
+    Scaffold { innerPadding ->
+        Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+            if (locations.isEmpty() && uiState !is UiState.Loading) {
                 Column(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text("No cities added yet.", style = MaterialTheme.typography.bodyLarge)
-                    Text("Press the '+' button to add one.", style = MaterialTheme.typography.bodyMedium)
+                    Text("Press the menu button to add one.", style = MaterialTheme.typography.bodyMedium)
                 }
             } else {
-<<<<<<< HEAD
-                // The HorizontalPager provides the slidable interface
-                HorizontalPager(
-                    state = pagerState,
-                    modifier = Modifier.fillMaxSize()
-                ) { page ->
-                    WeatherPage(locationWeather = locations[page])
-=======
                 HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
                     if (page < locations.size) {
                         WeatherPage(
@@ -400,13 +334,38 @@ fun WeatherApp(viewModel: WeatherViewModel = androidx.lifecycle.viewmodel.compos
                             }
                         )
                     }
->>>>>>> 5b2d031 (detailed information in weather)
                 }
+            }
+
+            Row(
+                Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                LocationButton(viewModel = viewModel)
+                if (pagerState.pageCount > 1) {
+                    PagerIndicator(pagerState = pagerState, modifier = Modifier.weight(1f))
+                } else {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+            }
+
+            AnimatedActionMenu(
+                modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
+                onAddClick = { showAddCityDialog = true },
+                onRemoveClick = {
+                    if (locations.isNotEmpty()) {
+                        viewModel.removeLocation(pagerState.currentPage)
+                    }
+                },
+                isRemoveEnabled = locations.isNotEmpty()
+            )
+
+            if (uiState is UiState.Loading) {
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             }
         }
     }
 
-    // Show the "Add City" dialog when `showAddCityDialog` is true
     if (showAddCityDialog) {
         AddCityDialog(
             onDismiss = { showAddCityDialog = false },
@@ -418,14 +377,83 @@ fun WeatherApp(viewModel: WeatherViewModel = androidx.lifecycle.viewmodel.compos
     }
 }
 
+// --- MODIFIED ANIMATED MENU ---
 @Composable
-<<<<<<< HEAD
-fun WeatherPage(locationWeather: LocationWeather) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-=======
+fun AnimatedActionMenu(
+    modifier: Modifier = Modifier,
+    onAddClick: () -> Unit,
+    onRemoveClick: () -> Unit,
+    isRemoveEnabled: Boolean
+) {
+    var isMenuExpanded by remember { mutableStateOf(false) }
+
+    val animatedBgColor by animateColorAsState(
+        targetValue = if (isMenuExpanded) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f) else Color.Transparent,
+        label = "MenuBackgroundColorAnimation"
+    )
+
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = animatedBgColor,
+        tonalElevation = if (isMenuExpanded) 4.dp else 0.dp
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(8.dp)
+        ) {
+            IconButton(onClick = { isMenuExpanded = !isMenuExpanded }) {
+                AnimatedContent(
+                    targetState = isMenuExpanded,
+                    transitionSpec = {
+                        fadeIn() togetherWith fadeOut() using SizeTransform(clip = false)
+                    }, label = "MenuIconAnimation"
+                ) { expanded ->
+                    if (expanded) {
+                        Icon(Icons.Default.Close, contentDescription = "Close Menu")
+                    } else {
+                        Icon(Icons.Default.Menu, contentDescription = "Open Menu")
+                    }
+                }
+            }
+
+            AnimatedVisibility(
+                visible = isMenuExpanded,
+                enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
+                exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut()
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(top = 8.dp)
+                ) {
+                    IconButton(onClick = {
+                        onAddClick()
+                        isMenuExpanded = false
+                    }) {
+                        Icon(Icons.Default.Add, contentDescription = "Add City")
+                    }
+                    IconButton(
+                        onClick = {
+                            if (isRemoveEnabled) onRemoveClick()
+                            isMenuExpanded = false
+                        },
+                        enabled = isRemoveEnabled
+                    ) {
+                        Icon(
+                            Icons.Default.Remove,
+                            contentDescription = "Remove City",
+                            tint = if (isRemoveEnabled) LocalContentColor.current else Color.Gray
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+@Composable
 fun LocationButton(viewModel: WeatherViewModel) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -469,8 +497,6 @@ fun PagerIndicator(pagerState: PagerState, modifier: Modifier = Modifier) {
     }
 }
 
-// --- MODIFIED WEATHER PAGE & NEW COMPOSABLES ---
-
 @Composable
 fun WeatherPage(locationWeather: LocationWeather, modifier: Modifier = Modifier) {
     val current = locationWeather.weather.current
@@ -479,26 +505,10 @@ fun WeatherPage(locationWeather: LocationWeather, modifier: Modifier = Modifier)
     Column(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState()) // Make the page scrollable
-            .padding(horizontal = 16.dp, vertical = 64.dp), // Adjust padding for top bar
->>>>>>> 5b2d031 (detailed information in weather)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 64.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-<<<<<<< HEAD
-        Text(
-            text = locationWeather.city.name,
-            style = MaterialTheme.typography.displayMedium,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            text = "(${locationWeather.city.latitude}, ${locationWeather.city.longitude})",
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.padding(bottom = 24.dp)
-        )
-        Text(
-            text = "${locationWeather.weather.current.temperature}°C",
-=======
-        // City Name
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = locationWeather.city.name,
@@ -514,16 +524,13 @@ fun WeatherPage(locationWeather: LocationWeather, modifier: Modifier = Modifier)
             }
         }
 
-        // Main Temperature
         Text(
             text = "${current.temperature}°C",
->>>>>>> 5b2d031 (detailed information in weather)
             style = TextStyle(fontSize = 72.sp, fontWeight = FontWeight.Light)
         )
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Current Weather Details Grid
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly
@@ -537,7 +544,6 @@ fun WeatherPage(locationWeather: LocationWeather, modifier: Modifier = Modifier)
         Divider()
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Daily Forecast Section
         ForecastSection(dailyForecast = daily)
     }
 }
@@ -566,7 +572,6 @@ fun ForecastSection(dailyForecast: DailyForecast) {
 
         Card(shape = RoundedCornerShape(12.dp)) {
             Column(modifier = Modifier.padding(vertical = 8.dp)) {
-                // Animate the visibility of forecast items
                 for (i in 0 until dailyForecast.time.size) {
                     AnimatedVisibility(visible = i < daysToShow) {
                         ForecastItem(
@@ -632,7 +637,6 @@ fun ForecastItem(date: String, maxTemp: Double, minTemp: Double) {
     }
 }
 
-// Helper function to format date string to day of the week (e.g., "Mon")
 private fun formatDayOfWeek(dateString: String): String {
     return try {
         val inputFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
@@ -640,10 +644,9 @@ private fun formatDayOfWeek(dateString: String): String {
         val date = inputFormat.parse(dateString)
         outputFormat.format(date ?: Date())
     } catch (e: Exception) {
-        dateString // Fallback to original string if parsing fails
+        dateString
     }
 }
-
 
 @Composable
 fun AddCityDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
@@ -659,21 +662,7 @@ fun AddCityDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
                 singleLine = true
             )
         },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (text.isNotBlank()) {
-                        onConfirm(text)
-                    }
-                }
-            ) {
-                Text("Add")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
+        confirmButton = { Button(onClick = { if (text.isNotBlank()) { onConfirm(text) } }) { Text("Add") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
