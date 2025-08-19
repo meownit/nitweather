@@ -1,9 +1,11 @@
 package com.example.weather2
 
+import android.content.Context
 import androidx.compose.animation.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
@@ -32,7 +34,10 @@ import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import java.text.SimpleDateFormat
+import java.util.*
 import kotlin.math.absoluteValue
+import androidx.compose.ui.graphics.Brush
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -157,12 +162,12 @@ fun AnimatedActionMenu(
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
         color = animatedBgColor,
-        tonalElevation = if (isMenuExpanded) 4.dp else 0.dp
+        tonalElevation = if (isMenuExpanded) 0.dp else 0.dp
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(0.dp),
-            modifier = Modifier.padding(0.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(0 .dp)
         ) {
             IconButton(onClick = { isMenuExpanded = !isMenuExpanded }) {
                 AnimatedContent(
@@ -260,43 +265,93 @@ fun LocationButton(viewModel: WeatherViewModel) {
 fun PagerIndicator(pagerState: PagerState, modifier: Modifier = Modifier) {
     Row(horizontalArrangement = Arrangement.Center, modifier = modifier) {
         repeat(pagerState.pageCount) { iteration ->
-            val color = if (pagerState.currentPage == iteration) Color.LightGray else Color.DarkGray
+            val color = if (pagerState.currentPage == iteration) Color(0xFFFFFFFF) else Color(0xFF999999)
             Box(modifier = Modifier.padding(4.dp).clip(CircleShape).background(color).size(10.dp))
         }
     }
 }
 
+
 @Composable
 fun WeatherPage(locationWeather: LocationWeather, modifier: Modifier = Modifier) {
     val current = locationWeather.weather.current
     val daily = locationWeather.weather.daily
+    val hourly = locationWeather.weather.hourly
+
+    val isDay = current.is_day == 1
+    val textColor = Color.White
+    val backgroundGradient = if (isDay) {
+        Brush.linearGradient(
+            colors = listOf(Color(0xFF44C9FF), Color(0xFF058AFF)),
+            start = androidx.compose.ui.geometry.Offset(0f, 0f),
+            end = androidx.compose.ui.geometry.Offset(0f, Float.POSITIVE_INFINITY)
+        )
+    } else {
+        Brush.linearGradient(
+            colors = listOf(Color(0xFF101040), Color(0xFF303040)),
+            start = androidx.compose.ui.geometry.Offset(0f, 0f),
+            end = androidx.compose.ui.geometry.Offset(0f, Float.POSITIVE_INFINITY)
+        )
+    }
+    val secondaryBackgroundColor = if (isDay) {
+        Color(0x4D87CEFA) // Light sky blue with 30% opacity
+    } else {
+        Color(0x4D2F4F4F) // Dark slate gray with 30% opacity
+    }
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
+            .background(backgroundGradient)
             .padding(horizontal = 16.dp, vertical = 64.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+        horizontalAlignment = Alignment.Start
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = locationWeather.city.name,
-                style = MaterialTheme.typography.displayMedium,
-                fontWeight = FontWeight.Bold
-            )
-            if (locationWeather.isCurrentLocation) {
-                Icon(
-                    imageVector = Icons.Default.LocationOn,
-                    contentDescription = "Current Location",
-                    modifier = Modifier.size(40.dp).padding(start = 8.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = locationWeather.city.name,
+                        style = MaterialTheme.typography.displayMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = textColor,
+                        fontSize = 32.sp,
+                        modifier = Modifier.padding(start = 16.dp)
+                    )
+                    if (locationWeather.isCurrentLocation) {
+                        Icon(
+                            imageVector = Icons.Default.LocationOn,
+                            contentDescription = "Current Location",
+                            modifier = Modifier.size(28.dp).padding(start = 8.dp),
+                            tint = textColor
+                        )
+                    }
+                }
+                Text(
+                    text = "${current.temperature}°C",
+                    style = TextStyle(fontSize = 28.sp, fontWeight = FontWeight.Light),
+                    color = textColor,
+                    modifier = Modifier.padding(start = 16.dp)
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .size(120.dp)
+                    .background(Color.Transparent, shape = RoundedCornerShape(8.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = getWeatherCondition(current.weathercode),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = textColor
                 )
             }
         }
-
-        Text(
-            text = "${current.temperature}°C",
-            style = TextStyle(fontSize = 72.sp, fontWeight = FontWeight.Light)
-        )
 
         Spacer(modifier = Modifier.height(24.dp))
 
@@ -304,54 +359,199 @@ fun WeatherPage(locationWeather: LocationWeather, modifier: Modifier = Modifier)
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            WeatherDetailItem(icon = Icons.Default.Thermostat, label = "Feels Like", value = "${current.apparentTemperature}°C")
-            WeatherDetailItem(icon = Icons.Default.WaterDrop, label = "Humidity", value = "${current.humidity}%")
-            WeatherDetailItem(icon = Icons.Default.Air, label = "Wind", value = "${current.windSpeed} km/h")
+            WeatherDetailItem(icon = Icons.Default.Thermostat, label = "Feels Like", value = "${current.apparentTemperature}°C", textColor = textColor)
+            WeatherDetailItem(icon = Icons.Default.WaterDrop, label = "Humidity", value = "${current.humidity}%", textColor = textColor)
+            WeatherDetailItem(icon = Icons.Default.Air, label = "Wind", value = "${current.windSpeed} km/h", textColor = textColor)
+            WeatherDetailItem(icon = Icons.Default.Cloud, label = "Pressure", value = "${current.pressure_msl} hPa", textColor = textColor)
         }
 
         Spacer(modifier = Modifier.height(24.dp))
-        Divider()
         Spacer(modifier = Modifier.height(16.dp))
 
-        ForecastSection(dailyForecast = daily)
+        HourlyForecastSection(hourlyForecast = hourly, isDay = isDay)
+        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(16.dp))
+
+        ForecastSection(dailyForecast = daily, hourlyForecast = hourly, isDay = isDay)
     }
 }
 
 @Composable
-fun WeatherDetailItem(icon: ImageVector, label: String, value: String) {
+fun WeatherDetailItem(icon: ImageVector, label: String, value: String, textColor: Color) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(imageVector = icon, contentDescription = label, modifier = Modifier.size(24.dp))
+        Icon(imageVector = icon, contentDescription = label, modifier = Modifier.size(24.dp), tint = textColor)
         Spacer(modifier = Modifier.height(4.dp))
-        Text(text = value, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
-        Text(text = label, style = MaterialTheme.typography.bodySmall)
+        Text(text = value, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = textColor)
+        Text(text = label, style = MaterialTheme.typography.bodySmall, color = textColor)
     }
 }
 
 @Composable
-fun ForecastSection(dailyForecast: DailyForecast) {
-    var expanded by remember { mutableStateOf(false) }
-    val daysToShow = if (expanded) dailyForecast.time.size else 3
+fun HourlyForecastSection(hourlyForecast: HourlyForecast, isDay: Boolean) {
+    val scrollState = rememberScrollState()
+    val hoursToShow = remember(hourlyForecast) { parseHourlyForecast(hourlyForecast) }
+    val textColor = Color.White
+    val secondaryBackgroundColor = if (isDay) {
+        Color(0x3DbFbFbF) // Light sky blue with 30% opacity
+    } else {
+        Color(0x2D5F5F5F) // Dark slate gray with 30% opacity
+    }
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = "Forecast",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
+        Card(
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+        ) {
+            Column(
+                modifier = Modifier
+                    .background(secondaryBackgroundColor)
+                    .padding(vertical = 8.dp)
+            ) {
+                Text(
+                    text = "Hourly Forecast",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    color = textColor
+                )
+                Row(
+                    modifier = Modifier
+                        .horizontalScroll(scrollState)
+                        .padding(
+                            start = 12.dp,
+                            end = 12.dp,
+                            top = 0.dp,
+                            bottom = 0.dp
+                        ),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    hoursToShow.forEach { item ->
+                        key(item.time) {
+                            HourlyForecastItem(
+                                time = item.time,
+                                temperature = item.temperature,
+                                humidity = item.humidity,
+                                windSpeed = item.windSpeed,
+                                textColor = textColor,
+                                secondaryBackgroundColor = secondaryBackgroundColor
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
-        Card(shape = RoundedCornerShape(12.dp)) {
-            Column(modifier = Modifier.padding(vertical = 8.dp)) {
+@Composable
+fun HourlyForecastItem(time: String, temperature: Double, humidity: Int, windSpeed: Double, textColor: Color, secondaryBackgroundColor: Color) {
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        modifier = Modifier
+            .width(100.dp)
+            .padding(vertical = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = time,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Bold,
+                color = textColor
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Thermostat,
+                    contentDescription = "Temperature",
+                    modifier = Modifier.size(16.dp),
+                    tint = textColor
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "${temperature}°C",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = textColor
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.WaterDrop,
+                    contentDescription = "Humidity",
+                    modifier = Modifier.size(16.dp),
+                    tint = textColor
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "$humidity%",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = textColor
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Air,
+                    contentDescription = "Wind Speed",
+                    modifier = Modifier.size(16.dp),
+                    tint = textColor
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "$windSpeed km/h",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = textColor
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ForecastSection(dailyForecast: DailyForecast, hourlyForecast: HourlyForecast, isDay: Boolean) {
+    var expanded by remember { mutableStateOf(false) }
+    val daysToShow = if (expanded) dailyForecast.time.size else 3
+    val textColor = Color.White
+    val secondaryBackgroundColor = if (isDay) {
+        Color(0x3DbFbFbF) // Light sky blue with 30% opacity
+    } else {
+        Color(0x2D5F5F5F) // Dark slate gray with 30% opacity
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Card(
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+        ) {
+            Column(
+                modifier = Modifier
+                    .background(secondaryBackgroundColor)
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Text(
+                    text = "Forecast",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    color = textColor
+                )
                 for (i in 0 until dailyForecast.time.size) {
                     AnimatedVisibility(visible = i < daysToShow) {
                         ForecastItem(
                             date = dailyForecast.time[i],
                             maxTemp = dailyForecast.temperatureMax[i],
-                            minTemp = dailyForecast.temperatureMin[i]
+                            minTemp = dailyForecast.temperatureMin[i],
+                            humidity = calculateDailyHumidityAverage(dailyForecast.time[i], hourlyForecast),
+                            windSpeed = dailyForecast.wind_speed_10m_max.getOrNull(i) ?: 0.0,
+                            textColor = textColor
                         )
                     }
                 }
 
-                Divider(modifier = Modifier.padding(horizontal = 16.dp))
+                Divider(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = textColor.copy(alpha = 0.5f)
+                )
 
                 Row(
                     modifier = Modifier
@@ -364,11 +564,13 @@ fun ForecastSection(dailyForecast: DailyForecast) {
                     Text(
                         text = if (expanded) "Show Less" else "Show More",
                         style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = textColor
                     )
                     Icon(
                         imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                        contentDescription = if (expanded) "Collapse" else "Expand"
+                        contentDescription = if (expanded) "Collapse" else "Expand",
+                        tint = textColor
                     )
                 }
             }
@@ -377,7 +579,7 @@ fun ForecastSection(dailyForecast: DailyForecast) {
 }
 
 @Composable
-fun ForecastItem(date: String, maxTemp: Double, minTemp: Double) {
+fun ForecastItem(date: String, maxTemp: Double, minTemp: Double, humidity: Int, windSpeed: Double, textColor: Color) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -385,22 +587,35 @@ fun ForecastItem(date: String, maxTemp: Double, minTemp: Double) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(
-            text = formatDayOfWeek(date),
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.weight(1f)
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = formatDayOfWeek(date),
+                style = MaterialTheme.typography.bodyLarge,
+                color = textColor
+            )
+            Text(
+                text = "Humidity: $humidity%",
+                style = MaterialTheme.typography.bodySmall,
+                color = textColor
+            )
+            Text(
+                text = "Wind: $windSpeed km/h",
+                style = MaterialTheme.typography.bodySmall,
+                color = textColor
+            )
+        }
         Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.End) {
             Text(
                 text = "${maxTemp}°",
                 style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                color = textColor
             )
             Spacer(modifier = Modifier.width(16.dp))
             Text(
                 text = "${minTemp}°",
                 style = MaterialTheme.typography.bodyLarge,
-                color = Color.Gray
+                color = textColor.copy(alpha = 0.7f)
             )
         }
     }
