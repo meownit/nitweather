@@ -1,6 +1,5 @@
-package com.example.weather2
+package com.meownit.nitweather
 
-import android.content.Context
 import androidx.compose.animation.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -34,10 +33,10 @@ import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
-import java.text.SimpleDateFormat
-import java.util.*
 import kotlin.math.absoluteValue
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.geometry.Offset
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -123,7 +122,8 @@ fun WeatherApp(viewModel: WeatherViewModel = androidx.lifecycle.viewmodel.compos
                         viewModel.refreshLocation(pagerState.currentPage)
                     }
                 },
-                isActionEnabled = locations.isNotEmpty()
+                isActionEnabled = locations.isNotEmpty(),
+                locationWeather = if (locations.isNotEmpty()) locations[pagerState.currentPage] else null
             )
 
             if (uiState is UiState.Loading) {
@@ -149,14 +149,26 @@ fun AnimatedActionMenu(
     onAddClick: () -> Unit,
     onRemoveClick: () -> Unit,
     onRefreshClick: () -> Unit,
-    isActionEnabled: Boolean
+    isActionEnabled: Boolean,
+    locationWeather: LocationWeather? // Changed to be nullable
 ) {
     var isMenuExpanded by remember { mutableStateOf(false) }
 
     val animatedBgColor by animateColorAsState(
-        targetValue = if (isMenuExpanded) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f) else Color.Transparent,
+        targetValue = if (isMenuExpanded) {
+            // Safely check if locationWeather is not null
+            if (locationWeather?.weather?.current?.is_day == 1) {
+                Color(0xFF444444).copy(alpha = 0.3F)
+            } else {
+                Color(0xFFDDDDDD).copy(alpha = 0.3F)
+            }
+        } else {
+            Color.Transparent
+        },
         label = "MenuBackgroundColorAnimation"
     )
+
+    val isDay = locationWeather?.weather?.current?.is_day == 1
 
     Surface(
         modifier = modifier,
@@ -167,7 +179,7 @@ fun AnimatedActionMenu(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.padding(0 .dp)
+            modifier = Modifier.padding(0.dp)
         ) {
             IconButton(onClick = { isMenuExpanded = !isMenuExpanded }) {
                 AnimatedContent(
@@ -177,9 +189,19 @@ fun AnimatedActionMenu(
                     }, label = "MenuIconAnimation"
                 ) { expanded ->
                     if (expanded) {
-                        Icon(Icons.Default.Close, contentDescription = "Close Menu")
+                        ShadowedIcon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close Menu",
+                            tint = Color.White,
+                            isDay = isDay
+                        )
                     } else {
-                        Icon(Icons.Default.Menu, contentDescription = "Open Menu")
+                        ShadowedIcon(
+                            imageVector = Icons.Default.Menu,
+                            contentDescription = "Open Menu",
+                            tint = Color.White,
+                            isDay = isDay
+                        )
                     }
                 }
             }
@@ -198,7 +220,12 @@ fun AnimatedActionMenu(
                         onAddClick()
                         isMenuExpanded = false
                     }) {
-                        Icon(Icons.Default.Add, contentDescription = "Add City")
+                        ShadowedIcon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Add City",
+                            tint = Color.White,
+                            isDay = isDay
+                        )
                     }
                     IconButton(
                         onClick = {
@@ -207,10 +234,11 @@ fun AnimatedActionMenu(
                         },
                         enabled = isActionEnabled
                     ) {
-                        Icon(
-                            Icons.Default.Remove,
+                        ShadowedIcon(
+                            imageVector = Icons.Default.Remove,
                             contentDescription = "Remove City",
-                            tint = if (isActionEnabled) LocalContentColor.current else Color.Gray
+                            tint = if (isActionEnabled) Color.White else Color.Gray,
+                            isDay = isDay
                         )
                     }
                     IconButton(
@@ -220,10 +248,11 @@ fun AnimatedActionMenu(
                         },
                         enabled = isActionEnabled
                     ) {
-                        Icon(
-                            Icons.Default.Refresh,
+                        ShadowedIcon(
+                            imageVector = Icons.Default.Refresh,
                             contentDescription = "Refresh Weather",
-                            tint = if (isActionEnabled) LocalContentColor.current else Color.Gray
+                            tint = if (isActionEnabled) Color.White else Color.Gray,
+                            isDay = isDay
                         )
                     }
                 }
@@ -255,7 +284,11 @@ fun LocationButton(viewModel: WeatherViewModel) {
                 android.widget.Toast.makeText(context, "Location permission not granted.", android.widget.Toast.LENGTH_SHORT).show()
             }
         }
-    }) {
+    },
+        colors = IconButtonDefaults.iconButtonColors(
+            contentColor = Color.White,
+            containerColor = Color.Transparent
+        )) {
         Icon(Icons.Default.LocationOn, contentDescription = "Get Current Location")
     }
 }
@@ -288,7 +321,7 @@ fun WeatherPage(locationWeather: LocationWeather, modifier: Modifier = Modifier)
         )
     } else {
         Brush.linearGradient(
-            colors = listOf(Color(0xFF101040), Color(0xFF303040)),
+            colors = listOf(Color(0xFF101040), Color(0xFF202040)),
             start = androidx.compose.ui.geometry.Offset(0f, 0f),
             end = androidx.compose.ui.geometry.Offset(0f, Float.POSITIVE_INFINITY)
         )
@@ -316,24 +349,32 @@ fun WeatherPage(locationWeather: LocationWeather, modifier: Modifier = Modifier)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = locationWeather.city.name,
-                        style = MaterialTheme.typography.displayMedium,
-                        fontWeight = FontWeight.Bold,
+                        style = shadowedTextStyle(
+                            isDay = isDay,
+                            style = MaterialTheme.typography.displayMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 32.sp
+                            )
+                        ),
                         color = textColor,
-                        fontSize = 32.sp,
                         modifier = Modifier.padding(start = 16.dp)
                     )
                     if (locationWeather.isCurrentLocation) {
-                        Icon(
+                        ShadowedIcon(
                             imageVector = Icons.Default.LocationOn,
                             contentDescription = "Current Location",
                             modifier = Modifier.size(28.dp).padding(start = 8.dp),
-                            tint = textColor
+                            tint = textColor,
+                            isDay = isDay
                         )
                     }
                 }
                 Text(
                     text = "${current.temperature}°C",
-                    style = TextStyle(fontSize = 28.sp, fontWeight = FontWeight.Light),
+                    style = shadowedTextStyle(
+                        isDay = isDay,
+                        style = TextStyle(fontSize = 28.sp, fontWeight = FontWeight.Light)
+                    ),
                     color = textColor,
                     modifier = Modifier.padding(start = 16.dp)
                 )
@@ -346,8 +387,10 @@ fun WeatherPage(locationWeather: LocationWeather, modifier: Modifier = Modifier)
             ) {
                 Text(
                     text = getWeatherCondition(current.weathercode),
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Bold,
+                    style = shadowedTextStyle(
+                        isDay = isDay,
+                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
+                    ),
                     color = textColor
                 )
             }
@@ -359,10 +402,10 @@ fun WeatherPage(locationWeather: LocationWeather, modifier: Modifier = Modifier)
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            WeatherDetailItem(icon = Icons.Default.Thermostat, label = "Feels Like", value = "${current.apparentTemperature}°C", textColor = textColor)
-            WeatherDetailItem(icon = Icons.Default.WaterDrop, label = "Humidity", value = "${current.humidity}%", textColor = textColor)
-            WeatherDetailItem(icon = Icons.Default.Air, label = "Wind", value = "${current.windSpeed} km/h", textColor = textColor)
-            WeatherDetailItem(icon = Icons.Default.Cloud, label = "Pressure", value = "${current.pressure_msl} hPa", textColor = textColor)
+            WeatherDetailItem(icon = Icons.Default.Thermostat, label = "Feels Like", value = "${current.apparentTemperature}°C", textColor = textColor, isDay = isDay)
+            WeatherDetailItem(icon = Icons.Default.WaterDrop, label = "Humidity", value = "${current.humidity}%", textColor = textColor, isDay = isDay)
+            WeatherDetailItem(icon = Icons.Default.Air, label = "Wind", value = "${current.windSpeed} km/h", textColor = textColor, isDay = isDay)
+            WeatherDetailItem(icon = Icons.Default.Cloud, label = "Pressure", value = "${current.pressure_msl} hPa", textColor = textColor, isDay = isDay)
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -377,12 +420,26 @@ fun WeatherPage(locationWeather: LocationWeather, modifier: Modifier = Modifier)
 }
 
 @Composable
-fun WeatherDetailItem(icon: ImageVector, label: String, value: String, textColor: Color) {
+fun WeatherDetailItem(icon: ImageVector, label: String, value: String, textColor: Color, isDay: Boolean) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(imageVector = icon, contentDescription = label, modifier = Modifier.size(24.dp), tint = textColor)
+        ShadowedIcon(imageVector = icon, contentDescription = label, modifier = Modifier.size(24.dp), tint = textColor, isDay = isDay)
         Spacer(modifier = Modifier.height(4.dp))
-        Text(text = value, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = textColor)
-        Text(text = label, style = MaterialTheme.typography.bodySmall, color = textColor)
+        Text(
+            text = value,
+            style = shadowedTextStyle(
+                isDay = isDay,
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
+            ),
+            color = textColor
+        )
+        Text(
+            text = label,
+            style = shadowedTextStyle(
+                isDay = isDay,
+                style = MaterialTheme.typography.bodySmall
+            ),
+            color = textColor
+        )
     }
 }
 
@@ -409,7 +466,10 @@ fun HourlyForecastSection(hourlyForecast: HourlyForecast, isDay: Boolean) {
             ) {
                 Text(
                     text = "Hourly Forecast",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = shadowedTextStyle(
+                        isDay = isDay,
+                        style = MaterialTheme.typography.titleMedium
+                    ),
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     color = textColor
                 )
@@ -432,7 +492,8 @@ fun HourlyForecastSection(hourlyForecast: HourlyForecast, isDay: Boolean) {
                                 humidity = item.humidity,
                                 windSpeed = item.windSpeed,
                                 textColor = textColor,
-                                secondaryBackgroundColor = secondaryBackgroundColor
+                                secondaryBackgroundColor = secondaryBackgroundColor,
+                                isDay = isDay
                             )
                         }
                     }
@@ -443,7 +504,7 @@ fun HourlyForecastSection(hourlyForecast: HourlyForecast, isDay: Boolean) {
 }
 
 @Composable
-fun HourlyForecastItem(time: String, temperature: Double, humidity: Int, windSpeed: Double, textColor: Color, secondaryBackgroundColor: Color) {
+fun HourlyForecastItem(time: String, temperature: Double, humidity: Int, windSpeed: Double, textColor: Color, secondaryBackgroundColor: Color, isDay: Boolean) {
     Card(
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent),
@@ -458,49 +519,63 @@ fun HourlyForecastItem(time: String, temperature: Double, humidity: Int, windSpe
         ) {
             Text(
                 text = time,
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = FontWeight.Bold,
+                style = shadowedTextStyle(
+                    isDay = isDay,
+                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold)
+                ),
                 color = textColor
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
+                ShadowedIcon(
                     imageVector = Icons.Default.Thermostat,
                     contentDescription = "Temperature",
                     modifier = Modifier.size(16.dp),
-                    tint = textColor
+                    tint = textColor,
+                    isDay = isDay
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = "${temperature}°C",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = shadowedTextStyle(
+                        isDay = isDay,
+                        style = MaterialTheme.typography.bodySmall
+                    ),
                     color = textColor
                 )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
+                ShadowedIcon(
                     imageVector = Icons.Default.WaterDrop,
                     contentDescription = "Humidity",
                     modifier = Modifier.size(16.dp),
-                    tint = textColor
+                    tint = textColor,
+                    isDay = isDay
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = "$humidity%",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = shadowedTextStyle(
+                        isDay = isDay,
+                        style = MaterialTheme.typography.bodySmall
+                    ),
                     color = textColor
                 )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
+                ShadowedIcon(
                     imageVector = Icons.Default.Air,
                     contentDescription = "Wind Speed",
                     modifier = Modifier.size(16.dp),
-                    tint = textColor
+                    tint = textColor,
+                    isDay = isDay
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = "$windSpeed km/h",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = shadowedTextStyle(
+                        isDay = isDay,
+                        style = MaterialTheme.typography.bodySmall
+                    ),
                     color = textColor
                 )
             }
@@ -531,7 +606,10 @@ fun ForecastSection(dailyForecast: DailyForecast, hourlyForecast: HourlyForecast
             ) {
                 Text(
                     text = "Forecast",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = shadowedTextStyle(
+                        isDay = isDay,
+                        style = MaterialTheme.typography.titleMedium
+                    ),
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     color = textColor
                 )
@@ -543,7 +621,8 @@ fun ForecastSection(dailyForecast: DailyForecast, hourlyForecast: HourlyForecast
                             minTemp = dailyForecast.temperatureMin[i],
                             humidity = calculateDailyHumidityAverage(dailyForecast.time[i], hourlyForecast),
                             windSpeed = dailyForecast.wind_speed_10m_max.getOrNull(i) ?: 0.0,
-                            textColor = textColor
+                            textColor = textColor,
+                            isDay = isDay
                         )
                     }
                 }
@@ -563,14 +642,17 @@ fun ForecastSection(dailyForecast: DailyForecast, hourlyForecast: HourlyForecast
                 ) {
                     Text(
                         text = if (expanded) "Show Less" else "Show More",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold,
+                        style = shadowedTextStyle(
+                            isDay = isDay,
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                        ),
                         color = textColor
                     )
-                    Icon(
+                    ShadowedIcon(
                         imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                         contentDescription = if (expanded) "Collapse" else "Expand",
-                        tint = textColor
+                        tint = textColor,
+                        isDay = isDay
                     )
                 }
             }
@@ -579,7 +661,7 @@ fun ForecastSection(dailyForecast: DailyForecast, hourlyForecast: HourlyForecast
 }
 
 @Composable
-fun ForecastItem(date: String, maxTemp: Double, minTemp: Double, humidity: Int, windSpeed: Double, textColor: Color) {
+fun ForecastItem(date: String, maxTemp: Double, minTemp: Double, humidity: Int, windSpeed: Double, textColor: Color, isDay: Boolean) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -590,31 +672,45 @@ fun ForecastItem(date: String, maxTemp: Double, minTemp: Double, humidity: Int, 
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = formatDayOfWeek(date),
-                style = MaterialTheme.typography.bodyLarge,
+                style = shadowedTextStyle(
+                    isDay = isDay,
+                    style = MaterialTheme.typography.bodyLarge
+                ),
                 color = textColor
             )
             Text(
                 text = "Humidity: $humidity%",
-                style = MaterialTheme.typography.bodySmall,
+                style = shadowedTextStyle(
+                    isDay = isDay,
+                    style = MaterialTheme.typography.bodySmall
+                ),
                 color = textColor
             )
             Text(
                 text = "Wind: $windSpeed km/h",
-                style = MaterialTheme.typography.bodySmall,
+                style = shadowedTextStyle(
+                    isDay = isDay,
+                    style = MaterialTheme.typography.bodySmall
+                ),
                 color = textColor
             )
         }
         Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.End) {
             Text(
                 text = "${maxTemp}°",
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Bold,
+                style = shadowedTextStyle(
+                    isDay = isDay,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
+                ),
                 color = textColor
             )
             Spacer(modifier = Modifier.width(16.dp))
             Text(
                 text = "${minTemp}°",
-                style = MaterialTheme.typography.bodyLarge,
+                style = shadowedTextStyle(
+                    isDay = isDay,
+                    style = MaterialTheme.typography.bodyLarge
+                ),
                 color = textColor.copy(alpha = 0.7f)
             )
         }
@@ -638,4 +734,50 @@ fun AddCityDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
         confirmButton = { Button(onClick = { if (text.isNotBlank()) { onConfirm(text) } }) { Text("Add") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
+}
+
+@Composable
+fun ShadowedIcon(
+    imageVector: ImageVector,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    tint: Color,
+    isDay: Boolean
+) {
+    if (isDay) {
+        Box(modifier = modifier) {
+            Icon(
+                imageVector = imageVector,
+                contentDescription = null,
+                modifier = Modifier.offset(x = 1.dp, y = 1.dp),
+                tint = Color.Black.copy(alpha = 0.5f)
+            )
+            Icon(
+                imageVector = imageVector,
+                contentDescription = contentDescription,
+                tint = tint
+            )
+        }
+    } else {
+        Icon(
+            imageVector = imageVector,
+            contentDescription = contentDescription,
+            modifier = modifier,
+            tint = tint
+        )
+    }
+}
+
+fun shadowedTextStyle(isDay: Boolean, style: TextStyle): TextStyle {
+    return if (isDay) {
+        style.copy(
+            shadow = Shadow(
+                color = Color.Black.copy(alpha = 0.5f),
+                offset = Offset(2f, 2f),
+                blurRadius = 4f
+            )
+        )
+    } else {
+        style
+    }
 }

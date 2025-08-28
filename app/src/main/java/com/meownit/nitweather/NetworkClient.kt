@@ -1,4 +1,4 @@
-package com.example.weather2
+package com.meownit.nitweather
 
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*

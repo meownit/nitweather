@@ -1,4 +1,4 @@
-package com.example.weather2
+package com.meownit.nitweather
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable

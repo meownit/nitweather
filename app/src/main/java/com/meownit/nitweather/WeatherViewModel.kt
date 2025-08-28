@@ -1,7 +1,6 @@
-package com.example.weather2
+package com.meownit.nitweather
 
 import android.app.Application
-import android.content.Context
 import android.location.Geocoder
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -11,7 +10,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.*
-import kotlin.math.absoluteValue
 
 class WeatherViewModel(application: Application) : AndroidViewModel(application) {
     private val _locationsState = MutableStateFlow<List<LocationWeather>>(emptyList())

@@ -1,4 +1,4 @@
-package com.example.weather2
+package com.meownit.nitweather
 
 import android.app.Application
 import android.util.Log
@@ -6,10 +6,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.serializer
 import java.io.FileNotFoundException
 

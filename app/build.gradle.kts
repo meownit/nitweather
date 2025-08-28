@@ -7,12 +7,12 @@ plugins {
 }
 
 android {
-    namespace = "com.example.weather2"
+    namespace = "com.meownit.nitweather"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.weather2"
-        minSdk = 35
+        applicationId = "com.meownit.nitweather"
+        minSdk = 26
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"

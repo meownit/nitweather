@@ -1,4 +1,4 @@
-package com.example.weather2
+package com.meownit.nitweather
 
 import android.Manifest
 import android.os.Bundle
@@ -6,8 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
-import com.example.weather2.ui.theme.Weather2Theme
+import com.meownit.nitweather.ui.theme.Weather2Theme
 
 class MainActivity : ComponentActivity() {
     private val requestPermissionLauncher = registerForActivityResult(

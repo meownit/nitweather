@@ -1,4 +1,4 @@
-package com.example.weather2
+package com.meownit.nitweather
 
 import android.content.Context
 import androidx.core.content.ContextCompat
