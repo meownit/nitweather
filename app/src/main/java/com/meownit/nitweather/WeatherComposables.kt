@@ -1,5 +1,6 @@
 package com.meownit.nitweather
 
+import android.app.Activity
 import androidx.compose.animation.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -37,6 +38,8 @@ import kotlin.math.absoluteValue
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -47,6 +50,40 @@ fun WeatherApp(viewModel: WeatherViewModel = androidx.lifecycle.viewmodel.compos
     val pagerState = rememberPagerState(pageCount = { locations.size })
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    // Assuming you have this logic to handle the background gradient in WeatherPage
+    val isDay = remember {
+        derivedStateOf {
+            if (locations.isNotEmpty() && pagerState.currentPage < locations.size) {
+                locations[pagerState.currentPage].weather.current.is_day == 1
+            } else {
+                true // Default to day mode if no locations are present
+            }
+        }
+    }.value
+
+    // Use a SideEffect to manage the status bar icons
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = (view.context as Activity).window
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !isDay
+        }
+    }
+
+    val backgroundGradient = if (isDay) {
+        Brush.linearGradient(
+            colors = listOf(Color(0xFF44C9FF), Color(0xFF058AFF)),
+            start = androidx.compose.ui.geometry.Offset(0f, 0f),
+            end = androidx.compose.ui.geometry.Offset(0f, Float.POSITIVE_INFINITY)
+        )
+    } else {
+        Brush.linearGradient(
+            colors = listOf(Color(0xFF101040), Color(0xFF202040)),
+            start = androidx.compose.ui.geometry.Offset(0f, 0f),
+            end = androidx.compose.ui.geometry.Offset(0f, Float.POSITIVE_INFINITY)
+        )
+    }
 
     LaunchedEffect(uiState) {
         when (val state = uiState) {
@@ -72,11 +109,21 @@ fun WeatherApp(viewModel: WeatherViewModel = androidx.lifecycle.viewmodel.compos
         }
     }
 
-    Scaffold { innerPadding ->
-        Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+    // This is the fully corrected Scaffold block
+    Scaffold(
+        containerColor = Color.Transparent, // Makes the Scaffold transparent to show the background
+        contentWindowInsets = WindowInsets(0.dp), // Disables Scaffold's default system bar padding
+    ) { innerPadding ->
+        // This Box is the root container, filling the entire screen
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(backgroundGradient) // Applies the gradient to the whole screen
+        ) {
             if (locations.isEmpty() && uiState !is UiState.Loading) {
                 Column(
-                    modifier = Modifier.fillMaxSize(),
+                    // Now use innerPadding to push the content below the status bar
+                    modifier = Modifier.fillMaxSize().padding(innerPadding),
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
@@ -84,7 +131,11 @@ fun WeatherApp(viewModel: WeatherViewModel = androidx.lifecycle.viewmodel.compos
                     Text("Press the menu button to add one.", style = MaterialTheme.typography.bodyMedium)
                 }
             } else {
-                HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+                HorizontalPager(
+                    state = pagerState,
+                    // Use innerPadding on the HorizontalPager to respect system bars
+                    modifier = Modifier.fillMaxSize().padding(innerPadding)
+                ) { page ->
                     if (page < locations.size) {
                         WeatherPage(
                             locationWeather = locations[page],
@@ -101,7 +152,9 @@ fun WeatherApp(viewModel: WeatherViewModel = androidx.lifecycle.viewmodel.compos
                 Modifier
                     .fillMaxWidth()
                     .align(Alignment.TopCenter)
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .padding(horizontal = 16.dp)
+                    // The top padding is now manually set to the status bar height
+                    .windowInsetsPadding(WindowInsets.statusBars)
             ) {
                 LocationButton(viewModel = viewModel)
                 if (pagerState.pageCount > 1) {
@@ -110,7 +163,11 @@ fun WeatherApp(viewModel: WeatherViewModel = androidx.lifecycle.viewmodel.compos
             }
 
             AnimatedActionMenu(
-                modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 16.dp, end = 16.dp)
+                    // The top padding is now manually set to the status bar height
+                    .windowInsetsPadding(WindowInsets.statusBars),
                 onAddClick = { showAddCityDialog = true },
                 onRemoveClick = {
                     if (locations.isNotEmpty()) {
@@ -174,7 +231,7 @@ fun AnimatedActionMenu(
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
         color = animatedBgColor,
-        tonalElevation = if (isMenuExpanded) 0.dp else 0.dp
+        tonalElevation = if (isMenuExpanded) 0.dp else 20.dp
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -214,7 +271,7 @@ fun AnimatedActionMenu(
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.padding(top = 8.dp)
+                    modifier = Modifier.padding(top = 0.dp)
                 ) {
                     IconButton(onClick = {
                         onAddClick()
@@ -313,19 +370,6 @@ fun WeatherPage(locationWeather: LocationWeather, modifier: Modifier = Modifier)
 
     val isDay = current.is_day == 1
     val textColor = Color.White
-    val backgroundGradient = if (isDay) {
-        Brush.linearGradient(
-            colors = listOf(Color(0xFF44C9FF), Color(0xFF058AFF)),
-            start = androidx.compose.ui.geometry.Offset(0f, 0f),
-            end = androidx.compose.ui.geometry.Offset(0f, Float.POSITIVE_INFINITY)
-        )
-    } else {
-        Brush.linearGradient(
-            colors = listOf(Color(0xFF101040), Color(0xFF202040)),
-            start = androidx.compose.ui.geometry.Offset(0f, 0f),
-            end = androidx.compose.ui.geometry.Offset(0f, Float.POSITIVE_INFINITY)
-        )
-    }
     val secondaryBackgroundColor = if (isDay) {
         Color(0x4D87CEFA) // Light sky blue with 30% opacity
     } else {
@@ -336,8 +380,7 @@ fun WeatherPage(locationWeather: LocationWeather, modifier: Modifier = Modifier)
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .background(backgroundGradient)
-            .padding(horizontal = 16.dp, vertical = 64.dp),
+            .padding(start = 16.dp, end = 16.dp, top = 92.dp, bottom = 16.dp),
         horizontalAlignment = Alignment.Start
     ) {
         Row(
@@ -773,7 +816,7 @@ fun shadowedTextStyle(isDay: Boolean, style: TextStyle): TextStyle {
         style.copy(
             shadow = Shadow(
                 color = Color.Black.copy(alpha = 0.5f),
-                offset = Offset(2f, 2f),
+                offset = Offset(4f, 4f),
                 blurRadius = 4f
             )
         )
