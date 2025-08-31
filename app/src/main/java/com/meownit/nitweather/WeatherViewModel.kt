@@ -20,22 +20,25 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
     private val _uiState = MutableStateFlow<UiState>(UiState.Idle)
     val uiState = _uiState.asStateFlow()
 
+    // New state to track if the initial database load is finished
+    private val _isInitialLoadComplete = MutableStateFlow(false)
+    val isInitialLoadComplete = _isInitialLoadComplete.asStateFlow()
+
     private val networkClient = NetworkClient()
     private val database = AppDatabase.getDatabase(application)
     private val weatherDao = database.weatherDao()
     private val prefs: SharedPreferences = application.getSharedPreferences("weather_prefs", Context.MODE_PRIVATE)
-    private val visitedCities = mutableSetOf<Int>() // Track pages visited and updated this session
+    private val visitedCities = mutableSetOf<Int>()
 
     init {
         viewModelScope.launch {
-            // Load all locations from database into memory at startup
             val entities = weatherDao.getAllLocations()
             _locationsState.value = entities.map { toLocationWeather(it) }
+            _isInitialLoadComplete.value = true // Signal that initial load is done
 
-            // Update only the first page (index 0) from API at startup
             if (_locationsState.value.isNotEmpty()) {
                 updateCity(0)
-                visitedCities.add(0) // Mark first page as visited and updated
+                visitedCities.add(0)
             }
         }
     }
@@ -64,8 +67,10 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
                     _locationsState.value = list
                     val insertedId = weatherDao.insertLocation(toEntity(newLocationWeather))
                     newLocationWeather.id = insertedId.toInt()
-                    visitedCities.add(list.size - 1) // Mark as visited and updated
-                    _uiState.value = UiState.Success("Added $cityName")
+                    val newIndex = list.size - 1
+                    visitedCities.add(newIndex)
+                    // Navigate to the newly added city
+                    _uiState.value = UiState.NavigateToPage(newIndex)
                 } else {
                     _uiState.value = UiState.Error("City not found: $cityName")
                 }
@@ -77,50 +82,61 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
 
     fun addCurrentLocation(lat: Double, lon: Double) {
         viewModelScope.launch {
-            val existingIndex = _locationsState.value.indexOfFirst { isNearby(it.city.latitude, it.city.longitude, lat, lon) }
-            if (existingIndex != -1) {
-                val list = _locationsState.value.toMutableList()
-                val loc = list[existingIndex]
-                if (!loc.isCurrentLocation) {
-                    list[existingIndex] = loc.copy(isCurrentLocation = true)
-                    weatherDao.updateLocation(toEntity(list[existingIndex]))
-                }
-                _locationsState.value = list
-                _uiState.value = UiState.NavigateToPage(existingIndex)
-                if (existingIndex !in visitedCities) {
-                    updateCity(existingIndex)
-                    visitedCities.add(existingIndex)
-                }
-                return@launch
-            }
-
             _uiState.value = UiState.Loading
-            val cityName = getCityNameFromCoordinates(lat, lon)
-            val city = CityResult(cityName, lat, lon)
-
-            // Set other current locations to false
             val list = _locationsState.value.toMutableList()
-            for (i in list.indices) {
-                if (list[i].isCurrentLocation) {
-                    list[i] = list[i].copy(isCurrentLocation = false)
-                    weatherDao.updateLocation(toEntity(list[i]))
+            val oldLocationsState = _locationsState.value
+
+            // Find if the location already exists
+            val existingIndex = list.indexOfFirst { isNearby(it.city.latitude, it.city.longitude, lat, lon) }
+
+            // Find if another location is marked as current
+            val oldCurrentId = oldLocationsState.find { it.isCurrentLocation }?.id
+            var newCurrentLocation: LocationWeather
+
+            if (existingIndex != -1) {
+                // Location exists, move it to the front
+                newCurrentLocation = list.removeAt(existingIndex).copy(isCurrentLocation = true)
+                list.add(0, newCurrentLocation)
+                weatherDao.updateLocation(toEntity(newCurrentLocation))
+            } else {
+                // It's a new location, create it and add to the front
+                try {
+                    val cityName = getCityNameFromCoordinates(lat, lon)
+                    val city = CityResult(cityName, lat, lon)
+                    val weatherResponse = networkClient.fetchWeather(lat, lon)
+                    newCurrentLocation = LocationWeather(
+                        city = city,
+                        weather = weatherResponse,
+                        isCurrentLocation = true,
+                        lastUpdated = System.currentTimeMillis()
+                    )
+                    val insertedId = weatherDao.insertLocation(toEntity(newCurrentLocation))
+                    newCurrentLocation.id = insertedId.toInt() // Update model with DB ID
+                    list.add(0, newCurrentLocation)
+                } catch (e: Exception) {
+                    _uiState.value = UiState.Error(e.message ?: "An unknown network error occurred")
+                    return@launch
                 }
             }
+
+            // Demote the old current location if it exists and is different from the new one
+            if (oldCurrentId != null && oldCurrentId != newCurrentLocation.id) {
+                val oldCurrentIndexInNewList = list.indexOfFirst { it.id == oldCurrentId }
+                if (oldCurrentIndexInNewList != -1) {
+                    val updatedOldLocation = list[oldCurrentIndexInNewList].copy(isCurrentLocation = false)
+                    list[oldCurrentIndexInNewList] = updatedOldLocation
+                    weatherDao.updateLocation(toEntity(updatedOldLocation))
+                }
+            }
+
             _locationsState.value = list
 
-            try {
-                val weatherResponse = networkClient.fetchWeather(lat, lon)
-                val newLocationWeather = LocationWeather(city, weatherResponse, true)
-                newLocationWeather.lastUpdated = System.currentTimeMillis()
-                list.add(newLocationWeather)
-                _locationsState.value = list
-                val insertedId = weatherDao.insertLocation(toEntity(newLocationWeather))
-                newLocationWeather.id = insertedId.toInt()
-                visitedCities.add(list.size - 1) // Mark as visited and updated
-                _uiState.value = UiState.Success("Added current location")
-            } catch (e: Exception) {
-                _uiState.value = UiState.Error(e.message ?: "An unknown network error occurred")
-            }
+            // Because the list is shuffled, reset the visited tracker and refresh page 0
+            visitedCities.clear()
+            updateCity(0)
+            visitedCities.add(0)
+
+            _uiState.value = UiState.NavigateToPage(0)
         }
     }
 
@@ -173,7 +189,6 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
         if (index !in list.indices) return
 
         val location = list[index]
-        // Check if recently updated
         if (System.currentTimeMillis() - location.lastUpdated < 120000) {
             _uiState.value = UiState.Success("Already up to date")
             return

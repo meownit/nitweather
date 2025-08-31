@@ -3,6 +3,12 @@ package com.meownit.nitweather
 import android.app.Activity
 import android.content.Context
 import androidx.compose.animation.*
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -50,6 +56,8 @@ fun WeatherApp(viewModel: WeatherViewModel = androidx.lifecycle.viewmodel.compos
     var showAddCityDialog by remember { mutableStateOf(false) }
     val locations by viewModel.locationsState.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
+    // Collect the new state here
+    val isInitialLoadComplete by viewModel.isInitialLoadComplete.collectAsState()
     val pagerState = rememberPagerState(pageCount = { locations.size })
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -122,7 +130,8 @@ fun WeatherApp(viewModel: WeatherViewModel = androidx.lifecycle.viewmodel.compos
                 .fillMaxSize()
                 .background(backgroundGradient)
         ) {
-            if (locations.isEmpty() && uiState !is UiState.Loading) {
+            // This is the updated condition
+            if (isInitialLoadComplete && locations.isEmpty()) {
                 Column(
                     modifier = Modifier.fillMaxSize().padding(innerPadding),
                     verticalArrangement = Arrangement.Center,
@@ -148,32 +157,38 @@ fun WeatherApp(viewModel: WeatherViewModel = androidx.lifecycle.viewmodel.compos
                 }
             }
 
-            Row(
+// Replace your top Row with this Box
+            Box(
                 Modifier
                     .fillMaxWidth()
                     .align(Alignment.TopCenter)
                     .padding(horizontal = 16.dp)
-                    .windowInsetsPadding(WindowInsets.statusBars),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
+                    .windowInsetsPadding(WindowInsets.statusBars)
             ) {
-                LocationButton(viewModel = viewModel)
+                // Left-aligned item
+                LocationButton(
+                    viewModel = viewModel,
+                    modifier = Modifier.align(Alignment.TopStart)
+                )
+
+                // Center-aligned item
                 if (pagerState.pageCount > 1) {
                     PagerIndicator(
                         pagerState = pagerState,
-                        modifier = Modifier.weight(1f).padding(top = 16.dp)
+                        modifier = Modifier
+                            .align(Alignment.TopCenter) // This is now in the correct context
+                            .padding(top = 16.dp)
                     )
-                } else {
-                    Spacer(modifier = Modifier.weight(1f))
                 }
+
+                // Right-aligned item
                 AnimatedActionMenu(
-                    modifier = Modifier.padding(top = 0.dp, end = 0.dp),
+                    modifier = Modifier.align(Alignment.TopEnd),
                     onAddClick = { showAddCityDialog = true },
                     onRemoveClick = {
                         if (locations.isNotEmpty() && pagerState.currentPage < locations.size) {
                             val currentPage = pagerState.currentPage
                             viewModel.removeLocation(currentPage)
-
                             // Adjust pager state after removal
                             scope.launch {
                                 val newSize = locations.size - 1
@@ -226,105 +241,208 @@ fun AnimatedActionMenu(
     locationWeather: LocationWeather?
 ) {
     var isMenuExpanded by remember { mutableStateOf(false) }
+    val isDay = locationWeather?.weather?.current?.is_day?.let { it == 1 } ?: true
 
+    // Animation for background color
     val animatedBgColor by animateColorAsState(
         targetValue = if (isMenuExpanded) {
-            if (locationWeather?.weather?.current?.is_day == 1) {
-                Color(0x88FFFFFF).copy(alpha = 0.3F)
-            } else {
-                Color(0xFFDDDDDD).copy(alpha = 0.3F)
+            when (isDay) {
+                true -> Color(0xFF333333).copy(alpha = 1F)
+                else -> Color(0xFF555577).copy(alpha = 1F)
             }
         } else {
             Color.Transparent
         },
+        animationSpec = tween(durationMillis = 300),
         label = "MenuBackgroundColorAnimation"
     )
 
-    val isDay = locationWeather?.weather?.current?.is_day == 1
+    // Animation for icon rotation
+    val iconRotation by animateFloatAsState(
+        targetValue = if (isMenuExpanded) 180f else 0f,
+        animationSpec = tween(
+            durationMillis = 300,
+            easing = FastOutSlowInEasing
+        ),
+        label = "MenuIconRotation"
+    )
+
+    // Animation for icon scale (optional bounce effect)
+    val iconScale by animateFloatAsState(
+        targetValue = if (isMenuExpanded) 1.1f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "MenuIconScale"
+    )
 
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
         color = animatedBgColor,
-        tonalElevation = if (isMenuExpanded) 0.dp else 20.dp
+        tonalElevation = if (isMenuExpanded) 8.dp else 0.dp
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.padding(0.dp)
+        // A Box allows us to align the collapsed and expanded states differently
+        Box(
+            modifier = Modifier.padding(vertical = 4.dp, horizontal = 8.dp)
         ) {
-            IconButton(onClick = { isMenuExpanded = !isMenuExpanded }) {
-                AnimatedContent(
-                    targetState = isMenuExpanded,
-                    transitionSpec = {
-                        fadeIn() togetherWith fadeOut() using SizeTransform(clip = false)
-                    }, label = "MenuIconAnimation"
-                ) { expanded ->
-                    if (expanded) {
-                        ShadowedIcon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Close Menu",
-                            tint = Color.White,
-                            isDay = isDay
-                        )
-                    } else {
-                        ShadowedIcon(
-                            imageVector = Icons.Default.Menu,
-                            contentDescription = "Open Menu",
-                            tint = Color.White,
-                            isDay = isDay
-                        )
-                    }
+            // STATE 1: Menu is COLLAPSED (Center-aligned icon with animations)
+            AnimatedVisibility(
+                visible = !isMenuExpanded,
+                enter = fadeIn(animationSpec = tween(durationMillis = 200, delayMillis = 150)) +
+                        scaleIn(animationSpec = tween(durationMillis = 200, delayMillis = 150)),
+                exit = fadeOut(animationSpec = tween(durationMillis = 150)) +
+                        scaleOut(animationSpec = tween(durationMillis = 150)),
+                modifier = Modifier.align(Alignment.Center)
+            ) {
+                IconButton(
+                    onClick = { isMenuExpanded = true },
+                    modifier = Modifier
+                        .graphicsLayer {
+                            rotationZ = iconRotation
+                            scaleX = iconScale
+                            scaleY = iconScale
+                        }
+                ) {
+                    ShadowedIcon(
+                        imageVector = Icons.Default.Menu,
+                        contentDescription = "Open Menu",
+                        tint = Color.White,
+                        isDay = isDay
+                    )
                 }
             }
 
+            // STATE 2: Menu is EXPANDED (Left-aligned column of actions)
             AnimatedVisibility(
                 visible = isMenuExpanded,
-                enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
-                exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut()
+                enter = expandVertically(
+                    expandFrom = Alignment.Top,
+                    animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)
+                ) + fadeIn(
+                    animationSpec = tween(durationMillis = 300, delayMillis = 100)
+                ),
+                exit = shrinkVertically(
+                    shrinkTowards = Alignment.Top,
+                    animationSpec = tween(durationMillis = 250, easing = FastOutLinearInEasing)
+                ) + fadeOut(
+                    animationSpec = tween(durationMillis = 200)
+                ),
+                modifier = Modifier.align(Alignment.TopStart)
             ) {
                 Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.padding(top = 0.dp)
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalAlignment = Alignment.Start,
+                    modifier = Modifier.animateContentSize(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessMedium
+                        )
+                    )
                 ) {
-                    IconButton(onClick = {
-                        onAddClick()
-                        isMenuExpanded = false
-                    }) {
+                    // Row 1: Close action with hover animation
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                isMenuExpanded = false
+                            }
+                            .padding(vertical = 8.dp, horizontal = 12.dp)
+                            .animateContentSize(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         ShadowedIcon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "Add City",
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close Icon",
                             tint = Color.White,
                             isDay = isDay
                         )
-                    }
-                    IconButton(
-                        onClick = {
-                            if (isActionEnabled) onRemoveClick()
-                            isMenuExpanded = false
-                        },
-                        enabled = isActionEnabled
-                    ) {
-                        ShadowedIcon(
-                            imageVector = Icons.Default.Remove,
-                            contentDescription = "Remove City",
-                            tint = if (isActionEnabled) Color.White else Color.Gray,
-                            isDay = isDay
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(
+                            "Close",
+                            color = Color.White,
+                            style = shadowedTextStyle(isDay, MaterialTheme.typography.bodyLarge)
                         )
                     }
-                    IconButton(
-                        onClick = {
-                            if (isActionEnabled) onRefreshClick()
-                            isMenuExpanded = false
-                        },
-                        enabled = isActionEnabled
+
+                    // Row 2: Add action with staggered animation
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                onAddClick()
+                                isMenuExpanded = false
+                            }
+                            .padding(vertical = 8.dp, horizontal = 12.dp)
+                            .animateContentSize(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         ShadowedIcon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Refresh Weather",
-                            tint = if (isActionEnabled) Color.White else Color.Gray,
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Add Icon",
+                            tint = Color.White,
                             isDay = isDay
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(
+                            "Add",
+                            color = Color.White,
+                            style = shadowedTextStyle(isDay, MaterialTheme.typography.bodyLarge)
+                        )
+                    }
+
+                    // Row 3: Remove action
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(enabled = isActionEnabled) {
+                                if (isActionEnabled) onRemoveClick()
+                                isMenuExpanded = false
+                            }
+                            .padding(vertical = 8.dp, horizontal = 12.dp)
+                            .animateContentSize(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val color = if (isActionEnabled) Color.White else Color.Gray
+                        ShadowedIcon(
+                            imageVector = Icons.Default.Remove,
+                            contentDescription = "Remove Icon",
+                            tint = color,
+                            isDay = isDay
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(
+                            "Remove",
+                            color = color,
+                            style = shadowedTextStyle(isDay, MaterialTheme.typography.bodyLarge)
+                        )
+                    }
+
+                    // Row 4: Refresh action
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(enabled = isActionEnabled) {
+                                if (isActionEnabled) onRefreshClick()
+                                isMenuExpanded = false
+                            }
+                            .padding(vertical = 8.dp, horizontal = 12.dp)
+                            .animateContentSize(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val color = if (isActionEnabled) Color.White else Color.Gray
+                        ShadowedIcon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Refresh Icon",
+                            tint = color,
+                            isDay = isDay
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(
+                            "Refresh",
+                            color = color,
+                            style = shadowedTextStyle(isDay, MaterialTheme.typography.bodyLarge)
                         )
                     }
                 }
@@ -334,7 +452,7 @@ fun AnimatedActionMenu(
 }
 
 @Composable
-fun LocationButton(viewModel: WeatherViewModel) {
+fun LocationButton(viewModel: WeatherViewModel, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
@@ -357,6 +475,7 @@ fun LocationButton(viewModel: WeatherViewModel) {
             }
         }
     },
+        modifier = modifier,
         colors = IconButtonDefaults.iconButtonColors(
             contentColor = Color.White,
             containerColor = Color.Transparent
