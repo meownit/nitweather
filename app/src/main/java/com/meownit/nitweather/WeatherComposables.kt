@@ -1,6 +1,7 @@
 package com.meownit.nitweather
 
 import android.app.Activity
+import android.content.Context
 import androidx.compose.animation.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -21,35 +22,27 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
+import coil.compose.AsyncImage
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlin.math.absoluteValue
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.platform.LocalView
-import androidx.core.view.WindowCompat
-import coil.compose.AsyncImage
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.ui.res.painterResource
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -60,6 +53,13 @@ fun WeatherApp(viewModel: WeatherViewModel = androidx.lifecycle.viewmodel.compos
     val pagerState = rememberPagerState(pageCount = { locations.size })
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val prefs = remember { context.getSharedPreferences("weather_prefs", Context.MODE_PRIVATE) }
+
+    // Track the current page to trigger updates only when necessary
+    LaunchedEffect(pagerState.currentPage) {
+        viewModel.onPageChanged(pagerState.currentPage)
+        prefs.edit().putInt("last_page", pagerState.currentPage).apply()
+    }
 
     // Assuming you have this logic to handle the background gradient in WeatherPage
     val isDay = remember {
@@ -72,6 +72,20 @@ fun WeatherApp(viewModel: WeatherViewModel = androidx.lifecycle.viewmodel.compos
         }
     }.value
 
+    val dayTopColor = Color(0xFF44C9FF)
+    val dayBottomColor = Color(0xFF058AFF)
+    val nightTopColor = Color(0xFF101040)
+    val nightBottomColor = Color(0xFF202040)
+
+    val topColor by animateColorAsState(if (isDay) dayTopColor else nightTopColor)
+    val bottomColor by animateColorAsState(if (isDay) dayBottomColor else nightBottomColor)
+
+    val backgroundGradient = Brush.linearGradient(
+        colors = listOf(topColor, bottomColor),
+        start = Offset(0f, 0f),
+        end = Offset(0f, Float.POSITIVE_INFINITY)
+    )
+
     // Use a SideEffect to manage the status bar icons
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -79,20 +93,6 @@ fun WeatherApp(viewModel: WeatherViewModel = androidx.lifecycle.viewmodel.compos
             val window = (view.context as Activity).window
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !isDay
         }
-    }
-
-    val backgroundGradient = if (isDay) {
-        Brush.linearGradient(
-            colors = listOf(Color(0xFF44C9FF), Color(0xFF058AFF)),
-            start = androidx.compose.ui.geometry.Offset(0f, 0f),
-            end = androidx.compose.ui.geometry.Offset(0f, Float.POSITIVE_INFINITY)
-        )
-    } else {
-        Brush.linearGradient(
-            colors = listOf(Color(0xFF101040), Color(0xFF202040)),
-            start = androidx.compose.ui.geometry.Offset(0f, 0f),
-            end = androidx.compose.ui.geometry.Offset(0f, Float.POSITIVE_INFINITY)
-        )
     }
 
     LaunchedEffect(uiState) {
@@ -110,12 +110,6 @@ fun WeatherApp(viewModel: WeatherViewModel = androidx.lifecycle.viewmodel.compos
                 viewModel.messageShown()
             }
             else -> {}
-        }
-    }
-
-    LaunchedEffect(locations.size) {
-        if (locations.isNotEmpty() && uiState !is UiState.NavigateToPage) {
-            pagerState.animateScrollToPage(locations.size - 1)
         }
     }
 
@@ -161,7 +155,7 @@ fun WeatherApp(viewModel: WeatherViewModel = androidx.lifecycle.viewmodel.compos
                     .padding(horizontal = 16.dp)
                     .windowInsetsPadding(WindowInsets.statusBars),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top // Changed from CenterVertically to Top
+                verticalAlignment = Alignment.Top
             ) {
                 LocationButton(viewModel = viewModel)
                 if (pagerState.pageCount > 1) {
@@ -229,13 +223,12 @@ fun AnimatedActionMenu(
     onRemoveClick: () -> Unit,
     onRefreshClick: () -> Unit,
     isActionEnabled: Boolean,
-    locationWeather: LocationWeather? // Changed to be nullable
+    locationWeather: LocationWeather?
 ) {
     var isMenuExpanded by remember { mutableStateOf(false) }
 
     val animatedBgColor by animateColorAsState(
         targetValue = if (isMenuExpanded) {
-            // Safely check if locationWeather is not null
             if (locationWeather?.weather?.current?.is_day == 1) {
                 Color(0x88FFFFFF).copy(alpha = 0.3F)
             } else {
@@ -383,7 +376,6 @@ fun PagerIndicator(pagerState: PagerState, modifier: Modifier = Modifier) {
     }
 }
 
-
 @Composable
 fun WeatherPage(locationWeather: LocationWeather, modifier: Modifier = Modifier) {
     val current = locationWeather.weather.current
@@ -453,9 +445,9 @@ fun WeatherPage(locationWeather: LocationWeather, modifier: Modifier = Modifier)
                 AsyncImage(
                     model = getWeatherIconResource(current.weathercode, isDay),
                     contentDescription = getWeatherCondition(current.weathercode),
-                    modifier = Modifier.size(120.dp), // Adjust size as needed
-                    placeholder = painterResource(R.drawable.cloud), // Fallback image
-                    error = painterResource(R.drawable.cloud) // Fallback for unknown weather codes
+                    modifier = Modifier.size(120.dp),
+                    placeholder = painterResource(R.drawable.cloud),
+                    error = painterResource(R.drawable.cloud)
                 )
             }
         }
@@ -513,9 +505,9 @@ fun HourlyForecastSection(hourlyForecast: HourlyForecast, isDay: Boolean) {
     val hoursToShow = remember(hourlyForecast) { parseHourlyForecast(hourlyForecast) }
     val textColor = Color.White
     val secondaryBackgroundColor = if (isDay) {
-        Color(0x2DFFFFFF) // Light sky blue with 30% opacity
+        Color(0x2DFFFFFF)
     } else {
-        Color(0x2D5F5F5F) // Dark slate gray with 30% opacity
+        Color(0x2D5F5F5F)
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -526,7 +518,7 @@ fun HourlyForecastSection(hourlyForecast: HourlyForecast, isDay: Boolean) {
             Column(
                 modifier = Modifier
                     .background(secondaryBackgroundColor)
-                    .padding(vertical = 8.dp)
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
                 Text(
                     text = "Hourly Forecast",
@@ -653,9 +645,9 @@ fun ForecastSection(dailyForecast: DailyForecast, hourlyForecast: HourlyForecast
     val daysToShow = if (expanded) dailyForecast.time.size else 3
     val textColor = Color.White
     val secondaryBackgroundColor = if (isDay) {
-        Color(0x2DFFFFFF) // Light sky blue with 30% opacity
+        Color(0x2DFFFFFF)
     } else {
-        Color(0x2D5F5F5F) // Dark slate gray with 30% opacity
+        Color(0x2D5F5F5F)
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -814,7 +806,7 @@ fun ShadowedIcon(
                 imageVector = imageVector,
                 contentDescription = null,
                 modifier = Modifier.offset(x = 1.dp, y = 1.dp),
-                tint = Color.Black.copy(alpha = 0.5f)
+                tint = Color.Black.copy(alpha = 0.2f)
             )
             Icon(
                 imageVector = imageVector,
@@ -836,7 +828,7 @@ fun shadowedTextStyle(isDay: Boolean, style: TextStyle): TextStyle {
     return if (isDay) {
         style.copy(
             shadow = Shadow(
-                color = Color.Black.copy(alpha = 0.5f),
+                color = Color.Black.copy(alpha = 0.2f),
                 offset = Offset(4f, 4f),
                 blurRadius = 4f
             )

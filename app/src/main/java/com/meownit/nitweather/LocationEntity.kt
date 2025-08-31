@@ -2,6 +2,8 @@ package com.meownit.nitweather
 
 import android.content.Context
 import androidx.room.*
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Entity(tableName = "locations")
 data class LocationEntity(
@@ -26,9 +28,10 @@ data class LocationEntity(
     @ColumnInfo(name = "hourly_time") val hourlyTime: List<String>,
     @ColumnInfo(name = "hourly_temp") val hourlyTemp: List<Double>,
     @ColumnInfo(name = "hourly_humidity") val hourlyHumidity: List<Int>,
-    @ColumnInfo(name = "hourly_wind_speed") val hourlyWindSpeed: List<Double>
-)
+    @ColumnInfo(name = "hourly_wind_speed") val hourlyWindSpeed: List<Double>,
 
+    @ColumnInfo(name = "last_updated") val lastUpdated: Long = 0
+)
 
 data class CurrentWeatherEntity(
     @ColumnInfo(name = "temperature") val temperature: Double,
@@ -40,8 +43,6 @@ data class CurrentWeatherEntity(
     @ColumnInfo(name = "pressure_msl") val pressureMsl: Double
 )
 
-
-
 @Dao
 interface WeatherDao {
     @Query("SELECT * FROM locations")
@@ -51,7 +52,7 @@ interface WeatherDao {
     suspend fun getLocationById(id: Int): LocationEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertLocation(location: LocationEntity)
+    suspend fun insertLocation(location: LocationEntity): Long
 
     @Update
     suspend fun updateLocation(location: LocationEntity)
@@ -63,11 +64,18 @@ interface WeatherDao {
     suspend fun deleteLocationById(id: Int)
 }
 
+val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE locations ADD COLUMN last_updated INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 @Database(
     entities = [LocationEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
+@TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun weatherDao(): WeatherDao
@@ -83,7 +91,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "weather_database"
                 )
-                    .addTypeConverter(Converters())
+                    .addMigrations(MIGRATION_1_2)
                     .build()
                 INSTANCE = instance
                 instance

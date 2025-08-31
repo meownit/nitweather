@@ -1,6 +1,8 @@
 package com.meownit.nitweather
 
 import android.app.Application
+import android.content.Context
+import android.content.SharedPreferences
 import android.location.Geocoder
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -19,13 +21,22 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
     val uiState = _uiState.asStateFlow()
 
     private val networkClient = NetworkClient()
-    private val storageManager = StorageManager(application, _locationsState, viewModelScope)
     private val database = AppDatabase.getDatabase(application)
     private val weatherDao = database.weatherDao()
+    private val prefs: SharedPreferences = application.getSharedPreferences("weather_prefs", Context.MODE_PRIVATE)
+    private val visitedCities = mutableSetOf<Int>() // Track pages visited and updated this session
 
     init {
-        storageManager.loadLocations { city, isCurrentLocation ->
-            fetchWeatherForCoordinates(city, isCurrentLocation, addNew = false)
+        viewModelScope.launch {
+            // Load all locations from database into memory at startup
+            val entities = weatherDao.getAllLocations()
+            _locationsState.value = entities.map { toLocationWeather(it) }
+
+            // Update only the first page (index 0) from API at startup
+            if (_locationsState.value.isNotEmpty()) {
+                updateCity(0)
+                visitedCities.add(0) // Mark first page as visited and updated
+            }
         }
     }
 
@@ -34,6 +45,10 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
             val existingIndex = _locationsState.value.indexOfFirst { it.city.name.equals(cityName, ignoreCase = true) }
             if (existingIndex != -1) {
                 _uiState.value = UiState.NavigateToPage(existingIndex)
+                if (existingIndex !in visitedCities) {
+                    updateCity(existingIndex)
+                    visitedCities.add(existingIndex)
+                }
                 return@launch
             }
 
@@ -41,7 +56,16 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
             try {
                 val city = networkClient.fetchCityCoordinates(cityName)
                 if (city != null) {
-                    fetchWeatherForCoordinates(city, isCurrentLocation = false, addNew = true)
+                    val weatherResponse = networkClient.fetchWeather(city.latitude, city.longitude)
+                    val newLocationWeather = LocationWeather(city, weatherResponse, false)
+                    newLocationWeather.lastUpdated = System.currentTimeMillis()
+                    val list = _locationsState.value.toMutableList()
+                    list.add(newLocationWeather)
+                    _locationsState.value = list
+                    val insertedId = weatherDao.insertLocation(toEntity(newLocationWeather))
+                    newLocationWeather.id = insertedId.toInt()
+                    visitedCities.add(list.size - 1) // Mark as visited and updated
+                    _uiState.value = UiState.Success("Added $cityName")
                 } else {
                     _uiState.value = UiState.Error("City not found: $cityName")
                 }
@@ -55,80 +79,117 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val existingIndex = _locationsState.value.indexOfFirst { isNearby(it.city.latitude, it.city.longitude, lat, lon) }
             if (existingIndex != -1) {
+                val list = _locationsState.value.toMutableList()
+                val loc = list[existingIndex]
+                if (!loc.isCurrentLocation) {
+                    list[existingIndex] = loc.copy(isCurrentLocation = true)
+                    weatherDao.updateLocation(toEntity(list[existingIndex]))
+                }
+                _locationsState.value = list
                 _uiState.value = UiState.NavigateToPage(existingIndex)
+                if (existingIndex !in visitedCities) {
+                    updateCity(existingIndex)
+                    visitedCities.add(existingIndex)
+                }
                 return@launch
             }
 
             _uiState.value = UiState.Loading
             val cityName = getCityNameFromCoordinates(lat, lon)
             val city = CityResult(cityName, lat, lon)
-            fetchWeatherForCoordinates(city, isCurrentLocation = true, addNew = true)
+
+            // Set other current locations to false
+            val list = _locationsState.value.toMutableList()
+            for (i in list.indices) {
+                if (list[i].isCurrentLocation) {
+                    list[i] = list[i].copy(isCurrentLocation = false)
+                    weatherDao.updateLocation(toEntity(list[i]))
+                }
+            }
+            _locationsState.value = list
+
+            try {
+                val weatherResponse = networkClient.fetchWeather(lat, lon)
+                val newLocationWeather = LocationWeather(city, weatherResponse, true)
+                newLocationWeather.lastUpdated = System.currentTimeMillis()
+                list.add(newLocationWeather)
+                _locationsState.value = list
+                val insertedId = weatherDao.insertLocation(toEntity(newLocationWeather))
+                newLocationWeather.id = insertedId.toInt()
+                visitedCities.add(list.size - 1) // Mark as visited and updated
+                _uiState.value = UiState.Success("Added current location")
+            } catch (e: Exception) {
+                _uiState.value = UiState.Error(e.message ?: "An unknown network error occurred")
+            }
         }
     }
 
-    fun removeLocation(index: Int, onPageChanged: (Int) -> Unit = {}) {
+    fun removeLocation(index: Int) {
         viewModelScope.launch {
-            val currentList = _locationsState.value.toMutableList()
-            if (index in currentList.indices) {
-                currentList.removeAt(index)
-                _locationsState.value = currentList
-                storageManager.saveLocations()
-
-                // Handle page adjustment
-                if (currentList.isNotEmpty()) {
-                    val newCurrentPage = when {
-                        index < currentList.size -> index // If we removed an earlier item, stay at same index
-                        else -> currentList.size - 1 // If we removed the last item, go to new last item
-                    }
-                    onPageChanged(newCurrentPage)
+            val list = _locationsState.value.toMutableList()
+            if (index in list.indices) {
+                val loc = list[index]
+                if (loc.id != null) {
+                    weatherDao.deleteLocationById(loc.id!!)
                 }
+                list.removeAt(index)
+                _locationsState.value = list
+                visitedCities.remove(index)
+                // Adjust indices in visitedCities
+                val newVisitedCities = mutableSetOf<Int>()
+                visitedCities.forEach { oldIndex ->
+                    if (oldIndex > index) {
+                        newVisitedCities.add(oldIndex - 1)
+                    } else if (oldIndex < index) {
+                        newVisitedCities.add(oldIndex)
+                    }
+                }
+                visitedCities.clear()
+                visitedCities.addAll(newVisitedCities)
             }
         }
     }
 
     fun refreshLocation(index: Int) {
         viewModelScope.launch {
-            val currentList = _locationsState.value
-            if (index in currentList.indices) {
-                _uiState.value = UiState.Loading
-                val location = currentList[index]
-                try {
-                    val weatherResponse = networkClient.fetchWeather(location.city.latitude, location.city.longitude)
-                    val updatedLocation = LocationWeather(location.city, weatherResponse, location.isCurrentLocation)
-                    val updatedList = _locationsState.value.toMutableList()
-                    updatedList[index] = updatedLocation
-                    _locationsState.value = updatedList
-                    storageManager.saveLocations()
-                    _uiState.value = UiState.Success("Updated ${location.city.name}")
-                } catch (e: Exception) {
-                    _uiState.value = UiState.Error(e.message ?: "Failed to refresh ${location.city.name}")
-                }
+            updateCity(index)
+            if (index !in visitedCities) {
+                visitedCities.add(index)
             }
         }
     }
 
-    private fun fetchWeatherForCoordinates(city: CityResult, isCurrentLocation: Boolean, addNew: Boolean) {
+    fun onPageChanged(index: Int) {
         viewModelScope.launch {
-            try {
-                val weatherResponse = networkClient.fetchWeather(city.latitude, city.longitude)
-                val newLocationWeather = LocationWeather(city, weatherResponse, isCurrentLocation)
-
-                if (addNew) {
-                    _locationsState.value += newLocationWeather
-                    storageManager.saveLocations()
-                } else {
-                    val index = _locationsState.value.indexOfFirst { it.city.name == city.name }
-                    if (index != -1) {
-                        val updatedList = _locationsState.value.toMutableList()
-                        updatedList[index] = newLocationWeather
-                        _locationsState.value = updatedList
-                        storageManager.saveLocations()
-                    }
-                }
-                _uiState.value = UiState.Success("Updated ${city.name}")
-            } catch (e: Exception) {
-                _uiState.value = UiState.Error(e.message ?: "An unknown network error occurred")
+            if (index !in visitedCities) {
+                updateCity(index)
+                visitedCities.add(index)
             }
+        }
+    }
+
+    private suspend fun updateCity(index: Int) {
+        val list = _locationsState.value.toMutableList()
+        if (index !in list.indices) return
+
+        val location = list[index]
+        // Check if recently updated
+        if (System.currentTimeMillis() - location.lastUpdated < 120000) {
+            _uiState.value = UiState.Success("Already up to date")
+            return
+        }
+
+        _uiState.value = UiState.Loading
+        try {
+            val weatherResponse = networkClient.fetchWeather(location.city.latitude, location.city.longitude)
+            val updatedLocation = location.copy(weather = weatherResponse)
+            updatedLocation.lastUpdated = System.currentTimeMillis()
+            list[index] = updatedLocation
+            _locationsState.value = list
+            weatherDao.updateLocation(toEntity(updatedLocation))
+            _uiState.value = UiState.Success("Updated ${location.city.name}")
+        } catch (e: Exception) {
+            _uiState.value = UiState.Error(e.message ?: "Failed to refresh ${location.city.name}")
         }
     }
 
@@ -159,5 +220,66 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
     override fun onCleared() {
         super.onCleared()
         networkClient.close()
+    }
+
+    private fun toEntity(lw: LocationWeather): LocationEntity {
+        return LocationEntity(
+            id = lw.id ?: 0,
+            cityName = lw.city.name,
+            latitude = lw.city.latitude,
+            longitude = lw.city.longitude,
+            isCurrentLocation = lw.isCurrentLocation,
+            currentWeather = CurrentWeatherEntity(
+                temperature = lw.weather.current.temperature,
+                humidity = lw.weather.current.humidity,
+                apparentTemperature = lw.weather.current.apparentTemperature,
+                windSpeed = lw.weather.current.windSpeed,
+                isDay = lw.weather.current.is_day,
+                weathercode = lw.weather.current.weathercode,
+                pressureMsl = lw.weather.current.pressure_msl
+            ),
+            dailyTime = lw.weather.daily.time,
+            dailyTempMax = lw.weather.daily.temperatureMax,
+            dailyTempMin = lw.weather.daily.temperatureMin,
+            dailyWindMax = lw.weather.daily.wind_speed_10m_max,
+            hourlyTime = lw.weather.hourly.time,
+            hourlyTemp = lw.weather.hourly.temperature,
+            hourlyHumidity = lw.weather.hourly.humidity,
+            hourlyWindSpeed = lw.weather.hourly.windSpeed,
+            lastUpdated = lw.lastUpdated
+        )
+    }
+
+    private fun toLocationWeather(entity: LocationEntity): LocationWeather {
+        val city = CityResult(entity.cityName, entity.latitude, entity.longitude)
+        val current = CurrentWeather(
+            temperature = entity.currentWeather.temperature,
+            humidity = entity.currentWeather.humidity,
+            apparentTemperature = entity.currentWeather.apparentTemperature,
+            windSpeed = entity.currentWeather.windSpeed,
+            is_day = entity.currentWeather.isDay,
+            weathercode = entity.currentWeather.weathercode,
+            pressure_msl = entity.currentWeather.pressureMsl
+        )
+        val daily = DailyForecast(
+            time = entity.dailyTime,
+            temperatureMax = entity.dailyTempMax,
+            temperatureMin = entity.dailyTempMin,
+            wind_speed_10m_max = entity.dailyWindMax
+        )
+        val hourly = HourlyForecast(
+            time = entity.hourlyTime,
+            temperature = entity.hourlyTemp,
+            humidity = entity.hourlyHumidity,
+            windSpeed = entity.hourlyWindSpeed
+        )
+        val weather = WeatherResponse(
+            latitude = entity.latitude,
+            longitude = entity.longitude,
+            current = current,
+            daily = daily,
+            hourly = hourly
+        )
+        return LocationWeather(city, weather, entity.isCurrentLocation, entity.id, entity.lastUpdated)
     }
 }

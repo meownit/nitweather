@@ -49,8 +49,13 @@ data class HourlyForecast(
 )
 
 @Serializable
-data class LocationWeather(val city: CityResult, val weather: WeatherResponse, val isCurrentLocation: Boolean = false)
-
+data class LocationWeather(
+    val city: CityResult,
+    val weather: WeatherResponse,
+    val isCurrentLocation: Boolean = false,
+    var id: Int? = null,
+    var lastUpdated: Long = 0
+)
 
 data class HourlyForecastData(
     val time: String,
