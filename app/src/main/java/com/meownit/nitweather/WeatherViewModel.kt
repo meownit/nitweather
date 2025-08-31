@@ -20,6 +20,8 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
 
     private val networkClient = NetworkClient()
     private val storageManager = StorageManager(application, _locationsState, viewModelScope)
+    private val database = AppDatabase.getDatabase(application)
+    private val weatherDao = database.weatherDao()
 
     init {
         storageManager.loadLocations { city, isCurrentLocation ->
@@ -64,13 +66,22 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun removeLocation(index: Int) {
+    fun removeLocation(index: Int, onPageChanged: (Int) -> Unit = {}) {
         viewModelScope.launch {
             val currentList = _locationsState.value.toMutableList()
             if (index in currentList.indices) {
                 currentList.removeAt(index)
                 _locationsState.value = currentList
                 storageManager.saveLocations()
+
+                // Handle page adjustment
+                if (currentList.isNotEmpty()) {
+                    val newCurrentPage = when {
+                        index < currentList.size -> index // If we removed an earlier item, stay at same index
+                        else -> currentList.size - 1 // If we removed the last item, go to new last item
+                    }
+                    onPageChanged(newCurrentPage)
+                }
             }
         }
     }

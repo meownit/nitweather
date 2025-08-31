@@ -40,6 +40,16 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import coil.compose.AsyncImage
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.res.painterResource
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -109,20 +119,17 @@ fun WeatherApp(viewModel: WeatherViewModel = androidx.lifecycle.viewmodel.compos
         }
     }
 
-    // This is the fully corrected Scaffold block
     Scaffold(
-        containerColor = Color.Transparent, // Makes the Scaffold transparent to show the background
-        contentWindowInsets = WindowInsets(0.dp), // Disables Scaffold's default system bar padding
+        containerColor = Color.Transparent,
+        contentWindowInsets = WindowInsets(0.dp),
     ) { innerPadding ->
-        // This Box is the root container, filling the entire screen
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(backgroundGradient) // Applies the gradient to the whole screen
+                .background(backgroundGradient)
         ) {
             if (locations.isEmpty() && uiState !is UiState.Loading) {
                 Column(
-                    // Now use innerPadding to push the content below the status bar
                     modifier = Modifier.fillMaxSize().padding(innerPadding),
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally
@@ -133,7 +140,6 @@ fun WeatherApp(viewModel: WeatherViewModel = androidx.lifecycle.viewmodel.compos
             } else {
                 HorizontalPager(
                     state = pagerState,
-                    // Use innerPadding on the HorizontalPager to respect system bars
                     modifier = Modifier.fillMaxSize().padding(innerPadding)
                 ) { page ->
                     if (page < locations.size) {
@@ -148,40 +154,56 @@ fun WeatherApp(viewModel: WeatherViewModel = androidx.lifecycle.viewmodel.compos
                 }
             }
 
-            Box(
+            Row(
                 Modifier
                     .fillMaxWidth()
                     .align(Alignment.TopCenter)
                     .padding(horizontal = 16.dp)
-                    // The top padding is now manually set to the status bar height
-                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .windowInsetsPadding(WindowInsets.statusBars),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top // Changed from CenterVertically to Top
             ) {
                 LocationButton(viewModel = viewModel)
                 if (pagerState.pageCount > 1) {
-                    PagerIndicator(pagerState = pagerState, modifier = Modifier.align(Alignment.Center))
+                    PagerIndicator(
+                        pagerState = pagerState,
+                        modifier = Modifier.weight(1f).padding(top = 16.dp)
+                    )
+                } else {
+                    Spacer(modifier = Modifier.weight(1f))
                 }
-            }
+                AnimatedActionMenu(
+                    modifier = Modifier.padding(top = 0.dp, end = 0.dp),
+                    onAddClick = { showAddCityDialog = true },
+                    onRemoveClick = {
+                        if (locations.isNotEmpty() && pagerState.currentPage < locations.size) {
+                            val currentPage = pagerState.currentPage
+                            viewModel.removeLocation(currentPage)
 
-            AnimatedActionMenu(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 16.dp, end = 16.dp)
-                    // The top padding is now manually set to the status bar height
-                    .windowInsetsPadding(WindowInsets.statusBars),
-                onAddClick = { showAddCityDialog = true },
-                onRemoveClick = {
-                    if (locations.isNotEmpty()) {
-                        viewModel.removeLocation(pagerState.currentPage)
-                    }
-                },
-                onRefreshClick = {
-                    if (locations.isNotEmpty()) {
-                        viewModel.refreshLocation(pagerState.currentPage)
-                    }
-                },
-                isActionEnabled = locations.isNotEmpty(),
-                locationWeather = if (locations.isNotEmpty()) locations[pagerState.currentPage] else null
-            )
+                            // Adjust pager state after removal
+                            scope.launch {
+                                val newSize = locations.size - 1
+                                if (newSize > 0) {
+                                    val newPage = when {
+                                        currentPage < newSize -> currentPage
+                                        else -> newSize - 1
+                                    }
+                                    pagerState.animateScrollToPage(newPage)
+                                }
+                            }
+                        }
+                    },
+                    onRefreshClick = {
+                        if (locations.isNotEmpty() && pagerState.currentPage < locations.size) {
+                            viewModel.refreshLocation(pagerState.currentPage)
+                        }
+                    },
+                    isActionEnabled = locations.isNotEmpty(),
+                    locationWeather = if (locations.isNotEmpty() && pagerState.currentPage < locations.size) {
+                        locations[pagerState.currentPage]
+                    } else null
+                )
+            }
 
             if (uiState is UiState.Loading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
@@ -215,7 +237,7 @@ fun AnimatedActionMenu(
         targetValue = if (isMenuExpanded) {
             // Safely check if locationWeather is not null
             if (locationWeather?.weather?.current?.is_day == 1) {
-                Color(0xFF444444).copy(alpha = 0.3F)
+                Color(0x88FFFFFF).copy(alpha = 0.3F)
             } else {
                 Color(0xFFDDDDDD).copy(alpha = 0.3F)
             }
@@ -355,7 +377,7 @@ fun LocationButton(viewModel: WeatherViewModel) {
 fun PagerIndicator(pagerState: PagerState, modifier: Modifier = Modifier) {
     Row(horizontalArrangement = Arrangement.Center, modifier = modifier) {
         repeat(pagerState.pageCount) { iteration ->
-            val color = if (pagerState.currentPage == iteration) Color(0xFFFFFFFF) else Color(0xFF999999)
+            val color = if (pagerState.currentPage == iteration) Color(0xFFFFFFFF) else Color(0x88FFFFFF)
             Box(modifier = Modifier.padding(4.dp).clip(CircleShape).background(color).size(10.dp))
         }
     }
@@ -428,13 +450,12 @@ fun WeatherPage(locationWeather: LocationWeather, modifier: Modifier = Modifier)
                     .background(Color.Transparent, shape = RoundedCornerShape(8.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = getWeatherCondition(current.weathercode),
-                    style = shadowedTextStyle(
-                        isDay = isDay,
-                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
-                    ),
-                    color = textColor
+                AsyncImage(
+                    model = getWeatherIconResource(current.weathercode, isDay),
+                    contentDescription = getWeatherCondition(current.weathercode),
+                    modifier = Modifier.size(120.dp), // Adjust size as needed
+                    placeholder = painterResource(R.drawable.cloud), // Fallback image
+                    error = painterResource(R.drawable.cloud) // Fallback for unknown weather codes
                 )
             }
         }
@@ -492,7 +513,7 @@ fun HourlyForecastSection(hourlyForecast: HourlyForecast, isDay: Boolean) {
     val hoursToShow = remember(hourlyForecast) { parseHourlyForecast(hourlyForecast) }
     val textColor = Color.White
     val secondaryBackgroundColor = if (isDay) {
-        Color(0x3DbFbFbF) // Light sky blue with 30% opacity
+        Color(0x2DFFFFFF) // Light sky blue with 30% opacity
     } else {
         Color(0x2D5F5F5F) // Dark slate gray with 30% opacity
     }
@@ -632,7 +653,7 @@ fun ForecastSection(dailyForecast: DailyForecast, hourlyForecast: HourlyForecast
     val daysToShow = if (expanded) dailyForecast.time.size else 3
     val textColor = Color.White
     val secondaryBackgroundColor = if (isDay) {
-        Color(0x3DbFbFbF) // Light sky blue with 30% opacity
+        Color(0x2DFFFFFF) // Light sky blue with 30% opacity
     } else {
         Color(0x2D5F5F5F) // Dark slate gray with 30% opacity
     }

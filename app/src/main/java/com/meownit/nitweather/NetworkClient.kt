@@ -25,7 +25,7 @@ class NetworkClient {
     }
 
     suspend fun fetchCityCoordinates(cityName: String): CityResult? {
-        val geoUrl = "https://geocoding-api.open-meteo.com/v1/search?name=${cityName.trim()}&count=1"
+        val geoUrl = "https://geocoding-api.open-meteo.com/v1/search?name=${cityName.trim().replace(" ", "%20")}&count=1"
         return try {
             val geoResponse: GeocodingResponse = client.get(geoUrl).body()
             val result = geoResponse.results?.firstOrNull()
@@ -46,11 +46,20 @@ class NetworkClient {
             throw IllegalArgumentException("Longitude must be a valid number between -180 and 180, got $longitude")
         }
 
+//        val weatherUrl = "https://api.open-meteo.com/v1/forecast?" +
+//                "latitude=$latitude&longitude=$longitude&" +
+//                "current=temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,is_day,weathercode,pressure_msl&" +
+//                "daily=temperature_2m_max,temperature_2m_min,wind_speed_10m_max&" +
+//                "hourly=temperature_2m,relative_humidity_2m,wind_speed_10m&" +
+//                "timezone=auto"
+
+
         val weatherUrl = "https://api.open-meteo.com/v1/forecast?" +
                 "latitude=$latitude&longitude=$longitude&" +
-                "current=temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,is_day,weathercode,pressure_msl&" +
-                "daily=temperature_2m_max,temperature_2m_min,wind_speed_10m_max&" +
+                "current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,pressure_msl,is_day,weathercode&" +
                 "hourly=temperature_2m,relative_humidity_2m,wind_speed_10m&" +
+                "daily=temperature_2m_max,temperature_2m_min,wind_speed_10m_max,relative_humidity_2m_max,relative_humidity_2m_min&" +
+                "forecast_days=7&forecast_hours=24&" +
                 "timezone=auto"
 
         Log.d("NetworkClient", "Fetching weather with URL: $weatherUrl")

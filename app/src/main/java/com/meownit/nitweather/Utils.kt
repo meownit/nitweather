@@ -97,15 +97,31 @@ fun parseHourlyForecast(hourlyForecast: HourlyForecast): List<HourlyForecastData
 
 fun getWeatherCondition(weatherCode: Int): String {
     return when (weatherCode) {
-        0 -> "Clear"
-        1, 2, 3 -> "Cloudy"
-        45, 48 -> "Fog"
-        51, 53, 55, 56, 57 -> "Drizzle"
-        61, 63, 65, 66, 67 -> "Rain"
-        71, 73, 75, 77 -> "Snow"
-        80, 81, 82 -> "Showers"
-        85, 86 -> "Snow Showers"
-        95, 96, 99 -> "Thunderstorm"
-        else -> "Unknown"
+        0 -> "Clear" // sun, moon
+        1, 2, 3 -> "Cloudy" // sun-cloudy, moon-cloudy
+        45, 48 -> "Fog" //
+        51, 53, 55, 56, 57 -> "Drizzle" // rain
+        61, 63, 65, 66, 67 -> "Rain" //rain.png
+        71, 73, 75, 77 -> "Snow" // snow
+        80, 81, 82 -> "Showers" // rain
+        85, 86 -> "Snow Showers" // snow
+        95, 96, 99 -> "Thunderstorm" // thunar
+        else -> "Unknown" // question mark
+    }
+}
+
+// Helper function to map weather code and day/night to drawable resource
+fun getWeatherIconResource(weatherCode: Int, isDay: Boolean): Int {
+    return when (weatherCode) {
+        0 -> if (isDay) R.drawable.sun else R.drawable.moon
+        1, 2, 3 -> if (isDay) R.drawable.sun_cloudy else R.drawable.moon_cloudy
+        45, 48 -> R.drawable.cloud // Fog (no specific day/night variation)
+        51, 53, 55, 56, 57 -> R.drawable.rainy // Drizzle
+        61, 63, 65, 66, 67 -> R.drawable.rainy // Rain
+        71, 73, 75, 77 -> R.drawable.snowy // Snow
+        80, 81, 82 -> R.drawable.rainy // Showers
+        85, 86 -> R.drawable.snowy // Snow Showers
+        95, 96, 99 -> R.drawable.thunder // Thunderstorm
+        else -> R.drawable.cloud // Fallback for unknown
     }
 }

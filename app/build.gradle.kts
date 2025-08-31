@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     id("org.jetbrains.kotlin.plugin.serialization") version "1.9.23"
+    id("kotlin-kapt")
 //    id("org.jetbrains.kotlin.android") version "1.9.24" apply false
 }
 
@@ -79,13 +80,16 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended:1.6.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.0")
 
-    // ADD THIS LINE
     implementation("androidx.compose.material3:material3:1.3.0-alpha01")
     implementation("androidx.compose.material3:material3:1.3.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")// Use the latest version
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.6")// For viewModelScope
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1") // For coroutines
+    implementation("io.coil-kt:coil-compose:2.7.0")
 
-    // ... other dependencies
+    implementation("androidx.room:room-runtime:2.6.1")
+    implementation("androidx.room:room-ktx:2.6.1") // For Kotlin extensions
+    kapt("androidx.room:room-compiler:2.6.1") // For annotation processing
 
+    implementation("com.google.code.gson:gson:2.10.1")
 }
