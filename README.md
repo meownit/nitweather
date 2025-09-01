@@ -1,2 +1,2 @@
-A vibe coded weather application for Android, in its beta,
-
+### nitweather
+A lightweight weather application for Android, written in korlin jetpack compose
