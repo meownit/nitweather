@@ -114,14 +114,15 @@ fun getWeatherCondition(weatherCode: Int): String {
 fun getWeatherIconResource(weatherCode: Int, isDay: Boolean): Int {
     return when (weatherCode) {
         0 -> if (isDay) R.drawable.sun else R.drawable.moon
-        1, 2, 3 -> if (isDay) R.drawable.sun_cloudy else R.drawable.moon_cloudy
-        45, 48 -> R.drawable.cloud // Fog (no specific day/night variation)
-        51, 53, 55, 56, 57 -> R.drawable.rainy // Drizzle
-        61, 63, 65, 66, 67 -> R.drawable.rainy // Rain
+        1, 2 -> if (isDay) R.drawable.sun_semicloudy else R.drawable.moon_semicloudy
+        3 -> if (isDay) R.drawable.sun_cloudy else R.drawable.moon_cloudy
+        45, 48 -> if (isDay) R.drawable.cloudy_day else R.drawable.cloudy_night // Fog (no specific day/night variation)
+        51, 53, 55, 56, 57 -> if (isDay) R.drawable.rainy_day else R.drawable.rainy // Drizzle
+        61, 63, 65, 66, 67 -> if (isDay) R.drawable.rainy_day else R.drawable.rainy // Rain
         71, 73, 75, 77 -> R.drawable.snowy // Snow
-        80, 81, 82 -> R.drawable.rainy // Showers
+        80, 81, 82 -> if (isDay) R.drawable.rainy_day else R.drawable.rainy // Showers
         85, 86 -> R.drawable.snowy // Snow Showers
-        95, 96, 99 -> R.drawable.thunder // Thunderstorm
-        else -> R.drawable.cloud // Fallback for unknown
+        95, 96, 99 -> if (isDay) R.drawable.thunder else R.drawable.thunder// Thunderstorm
+        else -> R.drawable.cloudy_day // Fallback for unknown
     }
 }

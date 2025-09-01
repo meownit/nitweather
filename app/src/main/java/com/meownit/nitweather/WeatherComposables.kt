@@ -137,9 +137,19 @@ fun WeatherApp(viewModel: WeatherViewModel = androidx.lifecycle.viewmodel.compos
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("No cities added yet.", style = MaterialTheme.typography.bodyLarge)
-                    Text("Press the menu button to add one.", style = MaterialTheme.typography.bodyMedium)
-                }
+                Text(
+                    text = "No cities added yet.",
+                    // Apply the white color and shadow style
+                    color = Color.White,
+                    style = shadowedTextStyle(isDay = isDay, style = MaterialTheme.typography.bodyLarge)
+                )
+                Text(
+                    text = "Press the menu button to add one.",
+                    // Apply the white color and shadow style here as well
+                    color = Color.White,
+                    style = shadowedTextStyle(isDay = isDay, style = MaterialTheme.typography.bodyMedium)
+                )
+            }
             } else {
                 HorizontalPager(
                     state = pagerState,
@@ -564,9 +574,9 @@ fun WeatherPage(locationWeather: LocationWeather, modifier: Modifier = Modifier)
                 AsyncImage(
                     model = getWeatherIconResource(current.weathercode, isDay),
                     contentDescription = getWeatherCondition(current.weathercode),
-                    modifier = Modifier.size(120.dp),
-                    placeholder = painterResource(R.drawable.cloud),
-                    error = painterResource(R.drawable.cloud)
+                    modifier = Modifier.size(300.dp).padding(end = 16.dp),
+                    placeholder = painterResource(R.drawable.cloudy_day),
+                    error = painterResource(R.drawable.cloudy_day)
                 )
             }
         }
