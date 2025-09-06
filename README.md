@@ -1,2 +1,2 @@
 ### nitweather
-A lightweight weather application for Android, written in korlin jetpack compose
+A lightweight weather application for Android, written in kotlin jetpack compose
